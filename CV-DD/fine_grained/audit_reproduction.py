@@ -150,6 +150,18 @@ def main() -> None:
             if len(hashes) == len(EXPECTED_RECOVERY_SEEDS):
                 expect(len(set(hashes)) == len(hashes), f"duplicate recovery trees: {dataset_name} IPC{ipc}", problems)
 
+        diversity_path = root / "audits" / f"{dataset_name}_recovery_seed_diversity.json"
+        diversity = read_json(diversity_path, problems)
+        if diversity:
+            expect(diversity.get("status") == "complete", f"recovery diversity audit incomplete: {dataset_name}", problems)
+            expect(diversity.get("relative_paths") == cfg.classes * 5, f"recovery diversity path count mismatch: {dataset_name}", problems)
+            pairs = diversity.get("pairs", [])
+            expect(len(pairs) == 3, f"recovery diversity pair count mismatch: {dataset_name}", problems)
+            for pair in pairs:
+                expect(pair.get("exact_duplicates") == 0, f"exact cross-seed recovery duplicates: {dataset_name} {pair.get('left_seed')}/{pair.get('right_seed')}", problems)
+                expect(pair.get("mean_mae_0_1", 0) > 0, f"zero cross-seed recovery MAE: {dataset_name}", problems)
+            dataset_evidence["recovery_seed_diversity"] = str(diversity_path.resolve())
+
     try:
         runs = load_runs(root)
     except (KeyError, TypeError, ValueError, RuntimeError, OSError, json.JSONDecodeError) as error:
