@@ -40,6 +40,28 @@
     "SRe2L++ and its FD2 variant use the standard same-architecture evaluation protocol.",
     "FADRM+ uses multiple teachers for distillation and one student for post-evaluation."
   ],
+  "official_recovery_script_coverage": {
+    "plain_sre2l_plus_plus": [
+      "recover/scripts/CUB_imsize224_experiments/SRe2Lplus_rec_res18_ipc5_ipcID0_5.sh"
+    ],
+    "missing_plain_baseline_scripts": [
+      "FGVC-Aircraft",
+      "Stanford Cars"
+    ],
+    "inference_for_missing_scripts": "Aircraft and Cars use the baseline terms shared by their released SRe2L++_FD2 scripts: image LR 1e-3, 4000 iterations, R_BN 1e-3, and 2x2 patches; FD2-specific losses are omitted by running the CV-DD SRe2L++ recovery implementation.",
+    "cub_explicit_values": {
+      "image_lr": 0.001,
+      "iterations": 10000,
+      "r_bn": 0.001,
+      "patch_factor": 2
+    },
+    "aircraft_and_cars_shared_core_values": {
+      "image_lr": 0.001,
+      "iterations": 4000,
+      "r_bn": 0.001,
+      "patch_factor": 2
+    }
+  },
   "core_code_stability_during_runs": {
     "revisions_compared": [
       "2273cff30da4114cdae849cdf22dd30080556e2a",
