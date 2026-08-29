@@ -192,8 +192,34 @@ case "$STAGE" in
             --result "$result" --classes "$CLASSES" --validation-images "$VAL_IMAGES"
         ;;
 
+    eval-hard)
+        [[ "$IPC" =~ ^(1|3|5)$ ]] || fail "eval-hard requires IPC 1, 3, or 5"
+        [[ "$STUDENT_SEED" =~ ^[0-9]+$ ]] || fail "eval-hard requires a numeric student seed"
+        syn="$(syn_for_ipc "$IPC")"
+        require_dir "$syn"
+        result="$RESULT_ROOT/$DATASET/rseed${RUN_SEED}/ipc${IPC}_sseed${STUDENT_SEED}.json"
+        mkdir -p "$(dirname "$result")"
+        if [[ -f "$result" ]]; then
+            python "$ROOT_DIR/fine_grained/audit_result.py" \
+                --result "$result" --classes "$CLASSES" --validation-images "$VAL_IMAGES"
+            echo "Hard-label evaluation already complete: $result"
+            exit 0
+        fi
+        python -u "$ROOT_DIR/validate/train_fkd.py" \
+            --model ResNet18 --ipc "$IPC" --hard-label \
+            --exp-name "hard_${DATASET}_ipc${IPC}_rseed${RUN_SEED}_sseed${STUDENT_SEED}" \
+            --original-data-path "$syn" --output-dir "$POST_EVAL_ROOT" \
+            --batch-size "$FKD_BATCH" --epochs 400 --dataset-name "$DATASET" \
+            --gradient-accumulation-steps "$ACCUMULATION" --cos \
+            --workers "$EVAL_WORKERS" --train-seed "$STUDENT_SEED" \
+            --adamw-lr-override 1e-3 --adamw-weight-decay 1e-5 --eta-override 2 \
+            --val-dir "$DATA_DIR/test" --disable-wandb --per-class-output "$result"
+        python "$ROOT_DIR/fine_grained/audit_result.py" \
+            --result "$result" --classes "$CLASSES" --validation-images "$VAL_IMAGES"
+        ;;
+
     *)
-        echo "Unknown stage $STAGE; use prepare, audit, teacher, patches, recover, sample, relabel, or eval" >&2
+        echo "Unknown stage $STAGE; use prepare, audit, teacher, patches, recover, sample, relabel, eval, or eval-hard" >&2
         exit 2
         ;;
 esac
