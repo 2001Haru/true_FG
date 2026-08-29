@@ -83,6 +83,13 @@ def main() -> None:
         target_logits = logits.gather(1, labels[:, None]).squeeze(1)
         mask = torch.nn.functional.one_hot(labels, cfg.classes).bool()
         strongest_other = logits.masked_fill(mask, float("-inf")).max(1).values
+        dominant_logits = logits.gather(1, dominant_labels[:, None]).squeeze(1)
+        dominant_mask = torch.nn.functional.one_hot(dominant_labels, cfg.classes).bool()
+        strongest_non_dominant = logits.masked_fill(
+            dominant_mask, float("-inf")
+        ).max(1).values
+        centered_logits = logits - logits.mean(1, keepdim=True)
+        top2_logits = logits.topk(2, dim=1).values
 
         temperature_stats = {}
         for temperature in args.temperatures:
@@ -123,8 +130,17 @@ def main() -> None:
             "teacher_top5_vs_hard_class": top5_accuracy,
             "teacher_top1_vs_dominant_cutmix_class": dominant_accuracy,
             "teacher_top1_in_either_cutmix_component": either_accuracy,
+            "mean_per_image_logit_std": logits.std(1, unbiased=False).mean().item(),
+            "mean_per_image_centered_logit_rms": centered_logits.square().mean(1).sqrt().mean().item(),
+            "mean_top1_top2_logit_gap": (top2_logits[:, 0] - top2_logits[:, 1]).mean().item(),
             "mean_target_logit_margin": (target_logits - strongest_other).mean().item(),
             "median_target_logit_margin": (target_logits - strongest_other).median().item(),
+            "mean_dominant_component_logit_margin": (
+                dominant_logits - strongest_non_dominant
+            ).mean().item(),
+            "median_dominant_component_logit_margin": (
+                dominant_logits - strongest_non_dominant
+            ).median().item(),
             "mean_cutmix_lambda": float(np.mean(mix_lams)),
             "mean_actual_original_area_fraction": original_fractions.mean().item(),
             "temperature": temperature_stats,
