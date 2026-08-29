@@ -63,7 +63,12 @@ def main() -> None:
     started_revision = existing.get(
         "started_git_revision", existing.get("git_revision", recorded_revision)
     )
-    started_at = existing.get("started_at", now)
+    fallback_started_at = (
+        datetime.datetime.fromtimestamp(args.output.stat().st_mtime, datetime.timezone.utc).isoformat()
+        if args.output.is_file()
+        else now
+    )
+    started_at = existing.get("started_at", fallback_started_at)
     payload = {
         "status": args.status,
         "dataset": cfg.to_dict(),
