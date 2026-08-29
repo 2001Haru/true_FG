@@ -62,6 +62,18 @@
       "patch_factor": 2
     }
   },
+  "student_training_math": {
+    "teacher_logits": "Plain-teacher logits, equivalent to selecting the backbone branch in the released FD2 dual-branch FKD payload.",
+    "loss": "KLDivLoss(reduction=batchmean) between log_softmax(student_logits / 20) and softmax(teacher_logits / 20)",
+    "temperature_squared_multiplier": false,
+    "gradient_accumulation_steps": 2,
+    "loss_divisor_per_microbatch": 2,
+    "optimizer": "AdamW with released parameter grouping",
+    "learning_rate": 0.001,
+    "weight_decay": 0.00001,
+    "scheduler": "cosine LambdaLR with eta=2 over 400 epochs",
+    "official_equivalence_check": "The FKD branch selection, temperature transforms, KL reduction, accumulation divisor, and optimizer step ordering match FD2/validate/train_fkd_FD2.py."
+  },
   "core_code_stability_during_runs": {
     "revisions_compared": [
       "2273cff30da4114cdae849cdf22dd30080556e2a",
