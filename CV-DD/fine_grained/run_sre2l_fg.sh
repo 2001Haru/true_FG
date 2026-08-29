@@ -26,7 +26,9 @@ case "$DATASET" in
     *) echo "Unsupported dataset: $DATASET" >&2; exit 2 ;;
 esac
 
-DATA_DIR="$DATA_ROOT/$DATASET"
+SOURCE_DATA_DIR="$DATA_ROOT/$DATASET"
+PREPARED_DATA_ROOT="${PREPARED_DATA_ROOT:-$EXP_ROOT/datasets}"
+DATA_DIR="$PREPARED_DATA_ROOT/$DATASET"
 TEACHER_DIR="$EXP_ROOT/teachers/$DATASET/tseed${TEACHER_SEED}"
 TEACHER="$TEACHER_DIR/ResNet18.pth"
 PATCH_BASE="$EXP_ROOT/patches/$DATASET/tseed${TEACHER_SEED}_pseed${PATCH_SEED}"
@@ -49,6 +51,12 @@ fkd_base_for_ipc() { printf '%s\n' "$EXP_ROOT/fkd/$DATASET/rseed${RUN_SEED}/ipc$
 fkd_actual_for_ipc() { printf '%s\n' "$(fkd_base_for_ipc "$1")_bs${FKD_BATCH}_ipc${1}"; }
 
 case "$STAGE" in
+    prepare)
+        python -u "$ROOT_DIR/fine_grained/prepare_resized_data.py" \
+            --dataset-name "$DATASET" --source-dir "$SOURCE_DATA_DIR" \
+            --output-dir "$DATA_DIR" --workers "${RESIZE_WORKERS:-16}" --skip-completed
+        ;;
+
     audit)
         python -u "$ROOT_DIR/fine_grained/audit_inputs.py" \
             --dataset-name "$DATASET" --data-dir "$DATA_DIR" --verify-all-sizes \
@@ -157,7 +165,7 @@ case "$STAGE" in
         ;;
 
     *)
-        echo "Unknown stage $STAGE; use audit, teacher, patches, recover, sample, relabel, or eval" >&2
+        echo "Unknown stage $STAGE; use prepare, audit, teacher, patches, recover, sample, relabel, or eval" >&2
         exit 2
         ;;
 esac

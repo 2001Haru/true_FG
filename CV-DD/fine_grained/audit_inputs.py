@@ -50,8 +50,12 @@ def main() -> None:
     if train["classes"] != test["classes"]:
         raise RuntimeError("Train/test class directory ordering differs")
     if set(train["inspected_sizes"]) != {"224x224"} or set(test["inspected_sizes"]) != {"224x224"}:
+        train_common = Counter(train["inspected_sizes"]).most_common(10)
+        test_common = Counter(test["inspected_sizes"]).most_common(10)
         raise RuntimeError(
-            f"Physical image size mismatch: train={train['inspected_sizes']} test={test['inspected_sizes']}"
+            "Physical image size mismatch: "
+            f"train_unique={len(train['inspected_sizes'])} train_top10={train_common}; "
+            f"test_unique={len(test['inspected_sizes'])} test_top10={test_common}"
         )
     payload = {
         "status": "valid",
