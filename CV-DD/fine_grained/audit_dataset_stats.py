@@ -37,6 +37,8 @@ def main() -> None:
     parser.add_argument("--split", default="train")
     parser.add_argument("--workers", default=4, type=int)
     parser.add_argument("--allow-variable-size", action="store_true")
+    parser.add_argument("--include-stems-file", type=Path,
+                        help="optional split list whose first whitespace-delimited field is an image stem")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     cfg = get_dataset(args.dataset_name)
@@ -45,6 +47,18 @@ def main() -> None:
         path for path in split_dir.rglob("*")
         if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
     )
+    requested_stems = None
+    if args.include_stems_file:
+        requested_stems = {
+            line.split(maxsplit=1)[0]
+            for line in args.include_stems_file.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        }
+        paths = [path for path in paths if path.stem in requested_stems]
+        observed_stems = {path.stem for path in paths}
+        if observed_stems != requested_stems:
+            missing = sorted(requested_stems - observed_stems)
+            raise RuntimeError(f"split list stems missing from ImageFolder: {missing[:10]}")
     if not paths:
         raise RuntimeError(f"no images found: {split_dir}")
 
@@ -82,6 +96,9 @@ def main() -> None:
         "split": args.split,
         "data_dir": str(args.data_dir.resolve()),
         "images": len(paths),
+        "include_stems_file": (
+            str(args.include_stems_file.resolve()) if args.include_stems_file else None
+        ),
         "pixels": pixels,
         "decoded_sizes": dict(sorted(sizes.items())),
         "mean": mean.tolist(),
