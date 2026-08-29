@@ -40,6 +40,22 @@
     "SRe2L++ and its FD2 variant use the standard same-architecture evaluation protocol.",
     "FADRM+ uses multiple teachers for distillation and one student for post-evaluation."
   ],
+  "core_code_stability_during_runs": {
+    "revisions_compared": [
+      "2273cff30da4114cdae849cdf22dd30080556e2a",
+      "c748208938e1d03874129c7654b92240a509265a",
+      "c929fff0f07f41338bbf76d90e621b2c71736c19"
+    ],
+    "identical_git_blobs": {
+      "CV-DD/recover/recover.py": "ae26f8fcd4a5b2818d3866df8ae7a1e9328aed44",
+      "CV-DD/recover/utils_recover.py": "d5e73b2e642f1d913af2fd46a121d351532f7de3",
+      "CV-DD/models/resnet.py": "ae6633a5acf47dba75ad265d3bbb236c3bffe39b",
+      "CV-DD/fine_grained/config.py": "46d2bb0fb62d02f5b38219a358989f14d3faa5e6",
+      "CV-DD/relabel/relabel.py": "3347dd1da5ea0d4105fc4cd04671822262bed9cb",
+      "CV-DD/validate/train_fkd.py": "0475bb0cfcbff148844b7d857e666d9f93fc16b1"
+    },
+    "runner_changes": "Only post-generation audits and expected validation-image counts were added; numerical recovery, relabel, and post-evaluation arguments were unchanged."
+  },
   "not_disclosed_by_either_version": [
     "baseline recovery learning rate",
     "baseline batch-normalization regularization weight",
