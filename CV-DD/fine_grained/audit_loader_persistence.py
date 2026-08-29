@@ -75,7 +75,7 @@ def build_loader(args, persistent: bool):
     sampler = RandomSampler(dataset, generator=generator)
     loader = DataLoader(
         dataset, batch_size=cfg.fkd_batch_size, sampler=sampler,
-        num_workers=args.workers, pin_memory=False,
+        num_workers=args.workers, pin_memory=args.pin_memory,
         persistent_workers=persistent,
     )
     return dataset, loader
@@ -103,6 +103,7 @@ def main() -> None:
     parser.add_argument("--fkd-dir", required=True, type=Path)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--workers", type=int, default=2)
+    parser.add_argument("--pin-memory", action="store_true")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.workers <= 0:
@@ -122,6 +123,7 @@ def main() -> None:
         "fkd_dir": str(args.fkd_dir.resolve()),
         "epochs": args.epochs,
         "workers": args.workers,
+        "pin_memory": args.pin_memory,
         "mismatch_epochs": mismatches,
         "epoch_sha256": nonpersistent_hashes,
         "nonpersistent_seconds": nonpersistent_seconds,
