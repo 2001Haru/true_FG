@@ -469,6 +469,7 @@ def main():
 
  
     args.best_acc1=0
+    args.last_validation_top1 = None
     args.optimizer = optimizer
     args.scheduler = scheduler
     args.train_loader = train_loader
@@ -491,6 +492,9 @@ def main():
                 top1 = validate(model, args, epoch)
             else:
                 top1 = 0
+
+        if epoch == args.epochs - 1:
+            args.last_validation_top1 = float(top1)
                 
         if not args.disable_wandb:
             wandb.log(wandb_metrics)
@@ -718,6 +722,7 @@ def export_per_class_accuracy(model, args, best_acc1):
         })
     payload = {
         'best_top1': float(best_acc1),
+        'final_epoch_top1': args.last_validation_top1,
         'training_target': ('hard_coarse_label' if args.hard_label else 'fkd_soft_label'),
         'student_initialization': args.student_initialization,
         'num_classes': output_classes,
