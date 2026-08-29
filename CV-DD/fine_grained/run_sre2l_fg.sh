@@ -83,9 +83,19 @@ case "$STAGE" in
     recover)
         require_file "$TEACHER"
         require_dir "$PATCH_DIR"
+        TEACHER_GATE="$TEACHER_DIR/teacher_gate.json"
+        PATCH_MANIFEST="$PATCH_DIR/patch_manifest.json"
+        require_file "$TEACHER_GATE"
+        require_file "$PATCH_MANIFEST"
         patch_count="$(find "$PATCH_DIR" -type f -name '*.jpg' | wc -l)"
         [[ "$patch_count" -eq $((CLASSES * 5)) ]] || fail "patch count $patch_count != $((CLASSES * 5))"
         mkdir -p "$RECOVERY_ROOT"
+        RECOVERY_MANIFEST="$RECOVERY_ROOT/recovery_manifest.json"
+        python "$ROOT_DIR/fine_grained/record_recovery_manifest.py" \
+            --dataset-name "$DATASET" --recovery-seed "$RUN_SEED" \
+            --teacher "$TEACHER" --teacher-gate "$TEACHER_GATE" \
+            --patch-dir "$PATCH_DIR" --patch-manifest "$PATCH_MANIFEST" \
+            --output "$RECOVERY_MANIFEST" --status running
         python -u "$ROOT_DIR/recover/recover.py" \
             --exp-name ipc5 --apply-data-augmentation --dataset-name "$DATASET" \
             --batch-size 100 --syn-data-path "$RECOVERY_ROOT" --patch-dir "$PATCH_BASE" \
@@ -97,6 +107,11 @@ case "$STAGE" in
             --initialisation-method Patches --patch-diff 2
         count="$(find "$SYN_IPC5" -type f -name '*.jpg' | wc -l)"
         [[ "$count" -eq $((CLASSES * 5)) ]] || fail "IPC5 count $count != $((CLASSES * 5))"
+        python "$ROOT_DIR/fine_grained/record_recovery_manifest.py" \
+            --dataset-name "$DATASET" --recovery-seed "$RUN_SEED" \
+            --teacher "$TEACHER" --teacher-gate "$TEACHER_GATE" \
+            --patch-dir "$PATCH_DIR" --patch-manifest "$PATCH_MANIFEST" \
+            --output "$RECOVERY_MANIFEST" --status complete
         ;;
 
     sample)
