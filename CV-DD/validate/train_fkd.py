@@ -104,6 +104,8 @@ def get_args():
                         help='override the dataset/model-specific cosine eta')
     parser.add_argument('--model', type=str,
                         default='ResNet18', help='student model name')
+    parser.add_argument('--student-initialization', choices=['random', 'imagenet-v1'],
+                        default='random', help='student weight initialization')
     parser.add_argument('--keep-topk', type=int, default=1000,
                         help='keep topk logits for kd loss')
     parser.add_argument('-T', '--temperature', type=float,
@@ -412,23 +414,35 @@ def main():
 
     if args.model == 'ResNet18':
         if args.input_size <= 64:
+            if args.student_initialization != 'random':
+                raise ValueError('ImageNet student initialization requires 224x224 input')
             model = ResNet18(args.ncls)
         else:
-            model = models.resnet18(pretrained=False)
+            weights = (models.ResNet18_Weights.IMAGENET1K_V1
+                       if args.student_initialization == 'imagenet-v1' else None)
+            model = models.resnet18(weights=weights)
             if args.ncls != 1000:
                 model.fc = nn.Linear(model.fc.in_features, args.ncls)
     elif args.model == 'ResNet50':
         if args.input_size <= 64:
+            if args.student_initialization != 'random':
+                raise ValueError('ImageNet student initialization requires 224x224 input')
             model = ResNet50(args.ncls)
         else:
-            model = models.resnet50(pretrained=False)
+            weights = (models.ResNet50_Weights.IMAGENET1K_V1
+                       if args.student_initialization == 'imagenet-v1' else None)
+            model = models.resnet50(weights=weights)
             if args.ncls != 1000:
                 model.fc = nn.Linear(model.fc.in_features, args.ncls)
     elif args.model == 'ResNet101':
         if args.input_size <= 64:
+            if args.student_initialization != 'random':
+                raise ValueError('ImageNet student initialization requires 224x224 input')
             model = ResNet101(args.ncls)
         else:
-            model = models.resnet101(pretrained=False)
+            weights = (models.ResNet101_Weights.IMAGENET1K_V1
+                       if args.student_initialization == 'imagenet-v1' else None)
+            model = models.resnet101(weights=weights)
             if args.ncls != 1000:
                 model.fc = nn.Linear(model.fc.in_features, args.ncls)
     else:
@@ -705,6 +719,7 @@ def export_per_class_accuracy(model, args, best_acc1):
     payload = {
         'best_top1': float(best_acc1),
         'training_target': ('hard_coarse_label' if args.hard_label else 'fkd_soft_label'),
+        'student_initialization': args.student_initialization,
         'num_classes': output_classes,
         'validation_dir': os.path.abspath(args.val_dir),
         'validation_images': len(args.val_loader.dataset),

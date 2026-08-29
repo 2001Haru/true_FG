@@ -16,6 +16,7 @@ WORKERS="${WORKERS:-4}"
 RELABEL_WORKERS="${RELABEL_WORKERS:-2}"
 EVAL_WORKERS="${EVAL_WORKERS:-2}"
 STUDENT_TEMPERATURE="${STUDENT_TEMPERATURE:-20}"
+STUDENT_INITIALIZATION="${STUDENT_INITIALIZATION:-random}"
 RESULT_ROOT="${RESULT_ROOT:-$EXP_ROOT/results}"
 POST_EVAL_ROOT="${POST_EVAL_ROOT:-$EXP_ROOT/post_eval}"
 
@@ -186,6 +187,7 @@ case "$STAGE" in
             --dataset-name "$DATASET" --gradient-accumulation-steps "$ACCUMULATION" \
             --mix-type cutmix --cos --workers "$EVAL_WORKERS" --fkd_seed 42 \
             --train-seed "$STUDENT_SEED" --temperature "$STUDENT_TEMPERATURE" \
+            --student-initialization "$STUDENT_INITIALIZATION" \
             --adamw-lr-override 1e-3 --adamw-weight-decay 1e-5 --eta-override 2 \
             --val-dir "$DATA_DIR/test" --disable-wandb --per-class-output "$result"
         python "$ROOT_DIR/fine_grained/audit_result.py" \
