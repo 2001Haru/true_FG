@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import re
 import statistics
 from collections import defaultdict
@@ -12,6 +13,11 @@ RESULT_PATTERN = re.compile(r"ipc(?P<ipc>\d+)_sseed(?P<sseed>\d+)\.json$")
 EXPECTED_RECOVERY_SEEDS = (41, 42, 43)
 EXPECTED_STUDENT_SEEDS = (42, 43, 44)
 EXPECTED_IPCS = (1, 3, 5)
+EXPECTED_VALIDATION_IMAGES = {
+    "CUB_imsize224": 5794,
+    "A_imsize224": 3333,
+    "SC_imsize224": 8041,
+}
 
 
 def load_runs(root: Path) -> list[dict]:
@@ -26,12 +32,31 @@ def load_runs(root: Path) -> list[dict]:
             ipc = int(match.group("ipc"))
             student_seed = int(match.group("sseed"))
             payload = json.loads(path.read_text(encoding="utf-8"))
+            top1 = float(payload["best_top1"])
+            if not math.isfinite(top1) or not 0.0 <= top1 <= 100.0:
+                raise RuntimeError(f"Invalid Top-1 in {path}: {top1}")
+            expected = {
+                "training_target": "fkd_soft_label",
+                "num_classes": DATASETS[dataset_name].classes,
+                "validation_images": EXPECTED_VALIDATION_IMAGES[dataset_name],
+                "primary_metric": "native_top1",
+            }
+            for key, expected_value in expected.items():
+                if payload.get(key) != expected_value:
+                    raise RuntimeError(
+                        f"Invalid {key} in {path}: {payload.get(key)!r} != {expected_value!r}"
+                    )
+            native = float(payload.get("native_top1_at_best_checkpoint", float("nan")))
+            if not math.isclose(top1, native, rel_tol=0.0, abs_tol=1e-4):
+                raise RuntimeError(
+                    f"Best/reloaded Top-1 mismatch in {path}: {top1} != {native}"
+                )
             runs.append({
                 "dataset": dataset_name,
                 "ipc": ipc,
                 "recovery_seed": recovery_seed,
                 "student_seed": student_seed,
-                "top1": float(payload["best_top1"]),
+                "top1": top1,
                 "path": str(path.resolve()),
                 "training_target": payload.get("training_target"),
                 "num_classes": payload.get("num_classes"),
