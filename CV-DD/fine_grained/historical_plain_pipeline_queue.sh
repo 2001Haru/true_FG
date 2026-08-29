@@ -33,9 +33,12 @@ python -u "$ROOT_DIR/fine_grained/train_historical_plain_teacher.py" \
     --output-dir "$TEACHER_DIR" --seed 42 --epochs 100 --batch-size 32 \
     --lr 1e-2 --momentum 0.9 --weight-decay 1e-4 --eta-min 1e-5 \
     --skip-completed > "$LOG_ROOT/teacher_${DATASET}_tseed42.log" 2>&1
-python "$ROOT_DIR/fine_grained/check_teacher_gate.py" \
+if ! python "$ROOT_DIR/fine_grained/check_teacher_gate.py" \
     --dataset-name "$DATASET" --teacher-dir "$TEACHER_DIR" \
-    > "$LOG_ROOT/teacher_gate_${DATASET}_tseed42.log" 2>&1
+    > "$LOG_ROOT/teacher_gate_${DATASET}_tseed42.log" 2>&1; then
+    echo "$(date --iso-8601=seconds) CAL-reference gate failed; continuing exact historical arm" \
+        >> "$STATUS"
+fi
 
 export EXP_ROOT="$PIPELINE_ROOT"
 export PREPARED_DATA_ROOT
