@@ -15,6 +15,9 @@ PATCH_SEED="${PATCH_SEED:-42}"
 WORKERS="${WORKERS:-4}"
 RELABEL_WORKERS="${RELABEL_WORKERS:-2}"
 EVAL_WORKERS="${EVAL_WORKERS:-2}"
+STUDENT_TEMPERATURE="${STUDENT_TEMPERATURE:-20}"
+RESULT_ROOT="${RESULT_ROOT:-$EXP_ROOT/results}"
+POST_EVAL_ROOT="${POST_EVAL_ROOT:-$EXP_ROOT/post_eval}"
 
 case "$DATASET" in
     CUB_imsize224|cub)
@@ -167,7 +170,7 @@ case "$STAGE" in
         require_dir "$syn"
         require_dir "$fkd_actual"
         require_file "$fkd_actual/fkd_audit.json"
-        result="$EXP_ROOT/results/$DATASET/rseed${RUN_SEED}/ipc${IPC}_sseed${STUDENT_SEED}.json"
+        result="$RESULT_ROOT/$DATASET/rseed${RUN_SEED}/ipc${IPC}_sseed${STUDENT_SEED}.json"
         mkdir -p "$(dirname "$result")"
         if [[ -f "$result" ]]; then
             python "$ROOT_DIR/fine_grained/audit_result.py" \
@@ -179,10 +182,10 @@ case "$STAGE" in
             --model ResNet18 --ipc "$IPC" \
             --exp-name "sre2l_${DATASET}_ipc${IPC}_rseed${RUN_SEED}_sseed${STUDENT_SEED}" \
             --original-data-path "$syn" --fkd-path "$fkd_actual" \
-            --output-dir "$EXP_ROOT/post_eval" --batch-size "$FKD_BATCH" --epochs 400 \
+            --output-dir "$POST_EVAL_ROOT" --batch-size "$FKD_BATCH" --epochs 400 \
             --dataset-name "$DATASET" --gradient-accumulation-steps "$ACCUMULATION" \
             --mix-type cutmix --cos --workers "$EVAL_WORKERS" --fkd_seed 42 \
-            --train-seed "$STUDENT_SEED" --temperature 20 \
+            --train-seed "$STUDENT_SEED" --temperature "$STUDENT_TEMPERATURE" \
             --adamw-lr-override 1e-3 --adamw-weight-decay 1e-5 --eta-override 2 \
             --val-dir "$DATA_DIR/test" --disable-wandb --per-class-output "$result"
         python "$ROOT_DIR/fine_grained/audit_result.py" \
