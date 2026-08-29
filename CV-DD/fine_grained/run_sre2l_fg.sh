@@ -18,11 +18,11 @@ EVAL_WORKERS="${EVAL_WORKERS:-2}"
 
 case "$DATASET" in
     CUB_imsize224|cub)
-        DATASET=CUB_imsize224; CLASSES=200; RECOVERY_ITERATIONS=10000; FKD_BATCH=20; ACCUMULATION=2 ;;
+        DATASET=CUB_imsize224; CLASSES=200; VAL_IMAGES=5794; RECOVERY_ITERATIONS=10000; FKD_BATCH=20; ACCUMULATION=2 ;;
     A_imsize224|aircraft|a)
-        DATASET=A_imsize224; CLASSES=100; RECOVERY_ITERATIONS=4000; FKD_BATCH=20; ACCUMULATION=2 ;;
+        DATASET=A_imsize224; CLASSES=100; VAL_IMAGES=3333; RECOVERY_ITERATIONS=4000; FKD_BATCH=20; ACCUMULATION=2 ;;
     SC_imsize224|cars|sc)
-        DATASET=SC_imsize224; CLASSES=196; RECOVERY_ITERATIONS=4000; FKD_BATCH=14; ACCUMULATION=2 ;;
+        DATASET=SC_imsize224; CLASSES=196; VAL_IMAGES=8041; RECOVERY_ITERATIONS=4000; FKD_BATCH=14; ACCUMULATION=2 ;;
     *) echo "Unsupported dataset: $DATASET" >&2; exit 2 ;;
 esac
 
@@ -168,6 +168,8 @@ case "$STAGE" in
         result="$EXP_ROOT/results/$DATASET/rseed${RUN_SEED}/ipc${IPC}_sseed${STUDENT_SEED}.json"
         mkdir -p "$(dirname "$result")"
         if [[ -f "$result" ]]; then
+            python "$ROOT_DIR/fine_grained/audit_result.py" \
+                --result "$result" --classes "$CLASSES" --validation-images "$VAL_IMAGES"
             echo "Evaluation already complete: $result"
             exit 0
         fi
@@ -181,6 +183,8 @@ case "$STAGE" in
             --train-seed "$STUDENT_SEED" --temperature 20 \
             --adamw-lr-override 1e-3 --adamw-weight-decay 1e-5 --eta-override 2 \
             --val-dir "$DATA_DIR/test" --disable-wandb --per-class-output "$result"
+        python "$ROOT_DIR/fine_grained/audit_result.py" \
+            --result "$result" --classes "$CLASSES" --validation-images "$VAL_IMAGES"
         ;;
 
     *)
