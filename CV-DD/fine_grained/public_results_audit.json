@@ -27,6 +27,14 @@
       "relevance": "Defines SRe2L; does not report the target three-dataset SRe2L++ table."
     }
   ],
+  "known_reproduction_report": {
+    "url": "https://github.com/Guang000/FD2/issues/2",
+    "status_on_2026_08_30": "open",
+    "maintainer_response": false,
+    "reported_scope": "CUB-200-2011 IPC3/5 with ResNet18 and ResNet50",
+    "reported_resnet18_top1": [41.0, 52.0],
+    "interpretation": "This is the user's earlier run with acknowledged incorrect hyperparameters, so it is evidence of unresolved public reproducibility concerns but is not an alternative numerical target for the controlled reproduction."
+  },
   "finding": "No independent paper with numerical SRe2L++ results on these exact three datasets was located. Exact-value searches resolve to FD2 or secondary summaries of FD2. This is a bounded literature search, not proof that no such result exists.",
   "reproduction_implication": "FD2 v1/v2 remains the sole numerical target; independent multi-seed runs in this harness provide the needed reproducibility evidence."
 }
