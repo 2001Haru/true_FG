@@ -11,17 +11,18 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXP_ROOT="${EXP_ROOT:-/linxi/dataset/FG_SRe2L_repro/v1}"
 WAIT_SECONDS="${WAIT_SECONDS:-300}"
 FORMAL_RESULT="$EXP_ROOT/results/$DATASET/rseed${RECOVERY_SEED}/ipc${IPC}_sseed${STUDENT_SEED}.json"
+PREREQUISITE_RESULT="${WAIT_FOR_RESULT:-$FORMAL_RESULT}"
 TAG="temperature_${TEMPERATURE//./p}"
 DIAGNOSTIC_ROOT="$EXP_ROOT/diagnostics/$TAG"
 STATUS="$DIAGNOSTIC_ROOT/status_${DATASET}_rseed${RECOVERY_SEED}_ipc${IPC}_sseed${STUDENT_SEED}.txt"
 mkdir -p "$DIAGNOSTIC_ROOT"
 
-while [[ ! -f "$FORMAL_RESULT" ]]; do
-    echo "$(date --iso-8601=seconds) waiting for formal result: $FORMAL_RESULT"
+while [[ ! -f "$PREREQUISITE_RESULT" ]]; do
+    echo "$(date --iso-8601=seconds) waiting for prerequisite result: $PREREQUISITE_RESULT"
     sleep "$WAIT_SECONDS"
 done
 
-echo "$(date --iso-8601=seconds) formal result observed; launching T=$TEMPERATURE" > "$STATUS"
+echo "$(date --iso-8601=seconds) prerequisite result observed; launching T=$TEMPERATURE" > "$STATUS"
 STUDENT_TEMPERATURE="$TEMPERATURE" \
 RESULT_ROOT="$DIAGNOSTIC_ROOT/results" \
 POST_EVAL_ROOT="$DIAGNOSTIC_ROOT/post_eval" \
