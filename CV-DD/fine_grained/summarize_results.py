@@ -20,10 +20,11 @@ EXPECTED_VALIDATION_IMAGES = {
 }
 
 
-def load_runs(root: Path) -> list[dict]:
+def load_runs(root: Path, result_root: Path | None = None) -> list[dict]:
     runs = []
+    result_root = result_root or root / "results"
     for dataset_name in DATASETS:
-        dataset_root = root / "results" / dataset_name
+        dataset_root = result_root / dataset_name
         for path in sorted(dataset_root.glob("rseed*/ipc*_sseed*.json")):
             match = RESULT_PATTERN.fullmatch(path.name)
             if match is None:
@@ -70,11 +71,14 @@ def main() -> None:
     parser.add_argument("--experiment-root", type=Path,
                         default=Path("/linxi/dataset/FG_SRe2L_repro/v1"))
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--result-root", type=Path,
+                        help="result tree to summarize; defaults to <experiment-root>/results")
     parser.add_argument("--allow-incomplete", action="store_true")
     args = parser.parse_args()
     output_dir = args.output_dir or args.experiment_root / "summary"
     output_dir.mkdir(parents=True, exist_ok=True)
-    runs = load_runs(args.experiment_root)
+    result_root = args.result_root or args.experiment_root / "results"
+    runs = load_runs(args.experiment_root, result_root)
     grouped = defaultdict(list)
     for run in runs:
         grouped[(run["dataset"], run["ipc"])].append(run)
@@ -144,6 +148,7 @@ def main() -> None:
 
     payload = {
         "experiment_root": str(args.experiment_root.resolve()),
+        "result_root": str(result_root.resolve()),
         "expected_recovery_seeds": EXPECTED_RECOVERY_SEEDS,
         "expected_student_seeds": EXPECTED_STUDENT_SEEDS,
         "runs": runs,

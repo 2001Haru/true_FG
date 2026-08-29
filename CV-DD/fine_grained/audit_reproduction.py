@@ -44,9 +44,12 @@ def main() -> None:
         default=Path("/linxi/dataset/FG_SRe2L_repro/v1"),
     )
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--result-root", type=Path,
+                        help="result tree to audit; defaults to <experiment-root>/results")
     parser.add_argument("--allow-incomplete", action="store_true")
     args = parser.parse_args()
     root = args.experiment_root
+    result_root = args.result_root or root / "results"
     problems: list[str] = []
     evidence = {"datasets": {}, "result_runs": 0}
 
@@ -163,7 +166,7 @@ def main() -> None:
             dataset_evidence["recovery_seed_diversity"] = str(diversity_path.resolve())
 
     try:
-        runs = load_runs(root)
+        runs = load_runs(root, result_root)
     except (KeyError, TypeError, ValueError, RuntimeError, OSError, json.JSONDecodeError) as error:
         problems.append(f"result validation failed: {error}")
         runs = []
@@ -187,6 +190,7 @@ def main() -> None:
     payload = {
         "status": "complete" if not problems else "incomplete",
         "experiment_root": str(root.resolve()),
+        "result_root": str(result_root.resolve()),
         "expected_result_runs": len(expected_runs),
         "evidence": evidence,
         "problems": problems,
