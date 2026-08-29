@@ -66,6 +66,20 @@ def main() -> None:
                 expect(split_data.get("inspected_sizes") == {"224x224": split_data.get("images")}, f"not every {split} image was audited at 224x224: {dataset_name}", problems)
             dataset_evidence["input_audit"] = str(input_audit_path.resolve())
 
+        stats_path = root / "datasets" / dataset_name / "train_channel_stats.json"
+        channel_stats = read_json(stats_path, problems)
+        if channel_stats:
+            expect(channel_stats.get("status") == "complete", f"channel statistics incomplete: {dataset_name}", problems)
+            if input_audit:
+                expect(channel_stats.get("images") == input_audit.get("train", {}).get("images"), f"channel-stat/input train count mismatch: {dataset_name}", problems)
+            dataset_evidence["channel_statistics"] = {
+                "path": str(stats_path.resolve()),
+                "mean": channel_stats.get("mean"),
+                "std_population": channel_stats.get("std_population"),
+                "max_abs_mean_delta": channel_stats.get("max_abs_mean_delta"),
+                "max_abs_std_delta": channel_stats.get("max_abs_std_delta"),
+            }
+
         teacher_dir = root / "teachers" / dataset_name / "tseed42"
         teacher_checkpoint = teacher_dir / "ResNet18.pth"
         teacher_complete = read_json(teacher_dir / "complete.json", problems)
