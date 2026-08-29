@@ -1,0 +1,30 @@
+{
+  "audit_date": "2026-08-30",
+  "repository": "https://github.com/VILA-Lab/SRe2L",
+  "commit": "8d00cba364bfa34aa1f5a8107dc041ae1be8ebe6",
+  "paper_protocol": {
+    "post_validation_epochs": 300,
+    "kd_temperature": 20
+  },
+  "released_sre2l_code": {
+    "student_file": "SRe2L/validate/train_FKD.py",
+    "student_shell": "SRe2L/validate/train_FKD.sh",
+    "default_kd_temperature": 3,
+    "shell_overrides_temperature": false,
+    "kl_reduction": "batchmean",
+    "temperature_squared_multiplier": false,
+    "default_epochs": 300,
+    "scheduler": "cosine eta=1"
+  },
+  "later_scdd_imagenet_code": {
+    "student_file": "SCDD/imagenet_code/post_train/train_kd.py",
+    "default_kd_temperature": 20,
+    "temperature_squared_multiplier": false
+  },
+  "fd2_explicit_override": {
+    "kd_temperature": 20,
+    "post_evaluation_epochs": 400,
+    "cosine_eta": 2
+  },
+  "finding": "The original SRe2L paper and released baseline code disagree on KD temperature (20 versus an unoverridden default of 3). FD2 explicitly selects 20, so the controlled primary run remains at 20. Temperature 3 is retained as the first source-backed diagnostic if the FD2 target cannot be reproduced."
+}
