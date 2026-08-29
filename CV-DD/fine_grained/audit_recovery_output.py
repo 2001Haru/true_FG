@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 
 from PIL import Image
@@ -25,13 +26,23 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def audit_tree(root: Path, classes: int, ipc: int) -> dict:
+def audit_tree(root: Path, classes: int, ipc: int, expected_class_names=None) -> dict:
     if not root.is_dir():
         raise RuntimeError(f"missing recovery tree: {root}")
-    class_dirs = sorted(path for path in root.iterdir() if path.is_dir())
-    expected_dirs = [f"{index:05d}" for index in range(classes)]
-    if [path.name for path in class_dirs] != expected_dirs:
-        raise RuntimeError(f"class directories do not match 00000..{classes - 1:05d}: {root}")
+    class_dirs = [path for path in root.iterdir() if path.is_dir()]
+    parsed = []
+    for path in class_dirs:
+        match = re.fullmatch(r"(?:new)?(\d+)", path.name)
+        if match is None:
+            raise RuntimeError(f"unrecognized class directory {path.name!r}: {root}")
+        parsed.append((int(match.group(1)), path))
+    parsed.sort()
+    if [class_id for class_id, _ in parsed] != list(range(classes)):
+        raise RuntimeError(f"class directory IDs do not cover 0..{classes - 1}: {root}")
+    class_dirs = [path for _, path in parsed]
+    class_names = [path.name for path in class_dirs]
+    if expected_class_names is not None and class_names != expected_class_names:
+        raise RuntimeError(f"class directory names differ from IPC5: {root}")
 
     tree_digest = hashlib.sha256()
     file_hashes = {}
@@ -60,6 +71,7 @@ def audit_tree(root: Path, classes: int, ipc: int) -> dict:
         "ipc": ipc,
         "files": classes * ipc,
         "tree_sha256": tree_digest.hexdigest(),
+        "class_names": class_names,
         "file_hashes": file_hashes,
     }
 
@@ -74,9 +86,12 @@ def main() -> None:
     if recovery_manifest.get("status") != "complete":
         raise RuntimeError(f"recovery manifest is not complete: {manifest_path}")
 
+    ipc5 = audit_tree(args.recovery_root / "ipc5", cfg.classes, 5)
+    class_names = ipc5["class_names"]
     trees = {
-        str(ipc): audit_tree(args.recovery_root / f"ipc{ipc}", cfg.classes, ipc)
-        for ipc in (1, 3, 5)
+        "1": audit_tree(args.recovery_root / "ipc1", cfg.classes, 1, class_names),
+        "3": audit_tree(args.recovery_root / "ipc3", cfg.classes, 3, class_names),
+        "5": ipc5,
     }
     ipc5_hashes = trees["5"]["file_hashes"]
     for ipc in (1, 3):
@@ -87,6 +102,7 @@ def main() -> None:
 
     for tree in trees.values():
         tree.pop("file_hashes")
+        tree.pop("class_names")
     payload = {
         "status": "complete",
         "dataset": cfg.name,
