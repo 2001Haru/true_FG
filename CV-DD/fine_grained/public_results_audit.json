@@ -1,0 +1,32 @@
+{
+  "audit_date": "2026-08-30",
+  "scope": "Independent published SRe2L++ results on CUB-200-2011, FGVC-Aircraft, or Stanford Cars",
+  "queries": [
+    "SRe2L++ CUB-200-2011",
+    "SRe2L++ FGVC-Aircraft",
+    "SRe2L++ Stanford Cars",
+    "SRe2L CUB-200-2011 dataset distillation",
+    "53.4 SRe2L++ CUB",
+    "52.6 66.6 SRe2L++ Aircraft",
+    "52.4 68.2 70.9 SRe2L"
+  ],
+  "primary_sources_checked": [
+    {
+      "title": "FD2: A Dedicated Framework for Fine-Grained Dataset Distillation",
+      "url": "https://arxiv.org/abs/2603.25144",
+      "relevance": "Reports the target SRe2L++ values on all three datasets."
+    },
+    {
+      "title": "Committee Voting for Dataset Distillation",
+      "url": "https://arxiv.org/abs/2501.07575",
+      "relevance": "Defines SRe2L++ but evaluates it on general-purpose datasets, not the three target fine-grained datasets."
+    },
+    {
+      "title": "Squeeze, Recover and Relabel: Dataset Condensation at ImageNet Scale From A New Perspective",
+      "url": "https://arxiv.org/abs/2306.13092",
+      "relevance": "Defines SRe2L; does not report the target three-dataset SRe2L++ table."
+    }
+  ],
+  "finding": "No independent paper with numerical SRe2L++ results on these exact three datasets was located. Exact-value searches resolve to FD2 or secondary summaries of FD2. This is a bounded literature search, not proof that no such result exists.",
+  "reproduction_implication": "FD2 v1/v2 remains the sole numerical target; independent multi-seed runs in this harness provide the needed reproducibility evidence."
+}
