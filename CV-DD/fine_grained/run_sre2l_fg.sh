@@ -128,6 +128,8 @@ case "$STAGE" in
                 fail "$target contains $count images; expected $((CLASSES * target_ipc))"
             fi
         done
+        python "$ROOT_DIR/fine_grained/audit_recovery_output.py" \
+            --dataset-name "$DATASET" --recovery-root "$RECOVERY_ROOT"
         ;;
 
     relabel)
