@@ -1,0 +1,56 @@
+{
+  "audit_date": "2026-08-30",
+  "paper": "Dataset Distillation via Committee Voting",
+  "arxiv_id": "2501.07575",
+  "versions": {
+    "v1": {
+      "submitted": "2025-01-13",
+      "generic_recovery": {
+        "optimizer": "Adam",
+        "learning_rate": 0.1,
+        "betas": [0.5, 0.9],
+        "epsilon": 1e-8,
+        "batch_size": "100, or 10 when classes < 100",
+        "iterations": 4000,
+        "scheduler": "cosine annealing"
+      },
+      "generic_post_evaluation_epochs": 300
+    },
+    "v2": {
+      "submitted": "2026-02-14",
+      "generic_recovery": {
+        "optimizer": "Adam",
+        "learning_rate": 0.25,
+        "betas": [0.5, 0.9],
+        "epsilon": 1e-8,
+        "batch_size": "100, or 10 when classes < 100",
+        "iterations": 2000,
+        "scheduler": "cosine annealing"
+      },
+      "generic_post_evaluation_epochs": 300
+    }
+  },
+  "invariants": {
+    "bssl": "Teacher train mode recomputes batch-specific BN statistics while other teacher parameters remain fixed.",
+    "post_evaluation": "AdamW, KL divergence, RandomResizedCrop, horizontal flip, CutMix, and dataset/architecture-dependent smoothed cosine schedules.",
+    "student_kd_temperature_disclosed": false
+  },
+  "temperature_disambiguation": "CV-DD v2's T=5 is the committee prior-weighting temperature. It is not the student KD temperature used in log_softmax/softmax.",
+  "fd2_override": {
+    "CUB_imsize224": {
+      "image_learning_rate": 0.001,
+      "recovery_iterations": 10000
+    },
+    "A_imsize224": {
+      "image_learning_rate": 0.001,
+      "recovery_iterations": 4000
+    },
+    "SC_imsize224": {
+      "image_learning_rate": 0.001,
+      "recovery_iterations": 4000
+    },
+    "post_evaluation_epochs": 400,
+    "student_kd_temperature": 20
+  },
+  "finding": "CV-DD v1 and v2 materially differ in generic recovery LR/iteration budget, but FD2 explicitly supplies different fine-grained values. The CV-DD version change is therefore a diagnostic alternative, not authority to override the current FD2 reproduction settings."
+}
