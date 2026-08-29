@@ -85,6 +85,8 @@ def parse_args() -> argparse.Namespace:
                         help="0 uses the minimum training samples per class")
     parser.add_argument("--forward-batch-size", type=int, default=0,
                         help="0 uses candidate-count, matching the released CUB utility")
+    parser.add_argument("--torch-cpu-threads", type=int, default=1,
+                        help="intra-op threads for small CPU crop/resize tensors")
     parser.add_argument("--skip-completed", action="store_true")
     return parser.parse_args()
 
@@ -93,6 +95,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     cfg = get_dataset(args.dataset_name)
+    if args.torch_cpu_threads < 1:
+        raise ValueError("--torch-cpu-threads must be positive")
+    # RandomResizedCrop operates on one small tensor at a time. Letting each
+    # interpolation fan out over every CPU core makes thread-launch overhead
+    # dominate and starves parallel dataset jobs; it does not change crop RNG.
+    torch.set_num_threads(args.torch_cpu_threads)
     if not torch.cuda.is_available():
         raise RuntimeError("A CUDA GPU is required for patch scoring")
     if not args.teacher.is_file():
