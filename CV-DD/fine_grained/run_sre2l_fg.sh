@@ -152,6 +152,9 @@ case "$STAGE" in
         fi
         batch_count="$(find "$fkd_actual" -type f -name 'batch_*.tar' | wc -l)"
         [[ "$batch_count" -eq "$expected_batches" ]] || fail "FKD batches $batch_count != $expected_batches"
+        python "$ROOT_DIR/fine_grained/audit_fkd.py" \
+            --fkd-dir "$fkd_actual" --images $((CLASSES * IPC)) \
+            --classes "$CLASSES" --batch-size "$FKD_BATCH" --epochs 400
         ;;
 
     eval)
@@ -161,6 +164,7 @@ case "$STAGE" in
         fkd_actual="$(fkd_actual_for_ipc "$IPC")"
         require_dir "$syn"
         require_dir "$fkd_actual"
+        require_file "$fkd_actual/fkd_audit.json"
         result="$EXP_ROOT/results/$DATASET/rseed${RUN_SEED}/ipc${IPC}_sseed${STUDENT_SEED}.json"
         mkdir -p "$(dirname "$result")"
         if [[ -f "$result" ]]; then
