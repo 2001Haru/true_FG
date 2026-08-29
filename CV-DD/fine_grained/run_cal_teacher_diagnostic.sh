@@ -33,13 +33,16 @@ mkdir -p "$RAW_DIR" "$EXTRACTED_DIR"
 
 if [[ ! -f "$RAW_CHECKPOINT" ]]; then
     echo "$(date --iso-8601=seconds) training official joint CAL teacher" > "$STATUS"
-    python -u "$ROOT_DIR/FD2/squeeze/squeeze_cal.py" \
-        --dataset_name "$DATASET" --dataset_dir "$DATA_DIR" \
-        --save_dir "$RAW_DIR" --model_list ResNet18 --model_source torchvision \
-        --pretrained_weights --pretrained_bn --exp_name "$EXP_NAME" \
-        --M "$ATTENTION_MAPS" --cal_ratio "$CAL_RATIO" --master_port 29620 \
-        --epoch 160 --stop_epoch 50 --batch_size 4 --optimizer SGD \
-        --world_size 1 --lr 1e-3 > "$LOG" 2>&1
+    (
+        cd "$ROOT_DIR/FD2"
+        python -u squeeze/squeeze_cal.py \
+            --dataset_name "$DATASET" --dataset_dir "$DATA_DIR" \
+            --save_dir "$RAW_DIR" --model_list ResNet18 --model_source torchvision \
+            --pretrained_weights --pretrained_bn --exp_name "$EXP_NAME" \
+            --M "$ATTENTION_MAPS" --cal_ratio "$CAL_RATIO" --master_port 29620 \
+            --epoch 160 --stop_epoch 50 --batch_size 4 --optimizer SGD \
+            --world_size 1 --lr 1e-3 > "$LOG" 2>&1
+    )
 fi
 
 python -u "$ROOT_DIR/CV-DD/fine_grained/extract_cal_backbone.py" \
