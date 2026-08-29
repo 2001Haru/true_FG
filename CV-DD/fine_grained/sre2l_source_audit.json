@@ -14,7 +14,8 @@
     "kl_reduction": "batchmean",
     "temperature_squared_multiplier": false,
     "default_epochs": 300,
-    "scheduler": "cosine eta=1"
+    "scheduler": "cosine eta=1",
+    "cutmix_label_contract": "generate_soft_label.py forwards the CutMix-modified tensor through the teacher and train_FKD.py replays the saved rand_index/lambda/bbox on the student input."
   },
   "later_scdd_imagenet_code": {
     "student_file": "SCDD/imagenet_code/post_train/train_kd.py",
@@ -27,4 +28,5 @@
     "cosine_eta": 2
   },
   "finding": "The original SRe2L paper and released baseline code disagree on KD temperature (20 versus an unoverridden default of 3). FD2 explicitly selects 20, so the controlled primary run remains at 20. Temperature 3 is retained as the first source-backed diagnostic if the FD2 target cannot be reproduced."
+  ,"cvdd_fd2_alias_equivalence": "CV-DD/FD2 assigns origin_images = images before calling an in-place CutMix implementation. The alias is therefore modified too, so the teacher still receives exactly the mixed tensor replayed by the student."
 }
