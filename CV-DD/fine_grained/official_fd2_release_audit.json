@@ -11,6 +11,13 @@
   ],
   "git_lfs_pointers": [],
   "github_releases": [],
+  "local_vendor_check": {
+    "path": "D:/HALcode/true_FG/FD2",
+    "official_tracked_files_checked": 116,
+    "missing_files": 0,
+    "sha256_mismatches": 0,
+    "exact_match": true
+  },
   "readme_behavior": {
     "teacher": "The squeeze scripts train and save pretrained models locally; no checkpoint download is linked.",
     "patches": "RDED_patch.py generates patch initialization from original training data and a classifier.",
