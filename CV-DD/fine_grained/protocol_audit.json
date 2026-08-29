@@ -49,6 +49,8 @@
       "Stanford Cars"
     ],
     "inference_for_missing_scripts": "Aircraft and Cars use the baseline terms shared by their released SRe2L++_FD2 scripts: image LR 1e-3, 4000 iterations, R_BN 1e-3, and 2x2 patches; FD2-specific losses are omitted by running the CV-DD SRe2L++ recovery implementation.",
+    "release_breakage": "The sole CUB baseline shell calls an untracked recover/recover.py, and there are no plain-baseline relabel or validation shells. It expects ResNet18.pth, which the CAL-only released squeeze scripts do not produce.",
+    "teacher_contract": "The baseline shell's plain ResNet18.pth contract supports a plain backbone teacher; CAL-suffixed checkpoint loading is confined to FD2-specific recovery/relabel code.",
     "cub_explicit_values": {
       "image_lr": 0.001,
       "iterations": 10000,

@@ -23,6 +23,20 @@
     "patches": "RDED_patch.py generates patch initialization from original training data and a classifier.",
     "smaller_ipc": "get_small_ipc_from_big_ipc.py derives IPC1/3 from a recovered IPC5 tree."
   },
+  "baseline_pipeline_coverage": {
+    "plain_sre2l_plus_plus_recovery_scripts": [
+      "recover/scripts/CUB_imsize224_experiments/SRe2Lplus_rec_res18_ipc5_ipcID0_5.sh"
+    ],
+    "plain_sre2l_plus_plus_relabel_scripts": [],
+    "plain_sre2l_plus_plus_validate_scripts": [],
+    "missing_entrypoint_referenced_by_recovery_script": "recover/recover.py",
+    "published_recovery_entrypoints": [
+      "recover/recover_FD2.py",
+      "recover/recover_FD2_FADRM.py"
+    ],
+    "checkpoint_contract_gap": "The baseline loader expects <model_pool>/ResNet18.pth, while released squeeze scripts only create CAL-suffixed checkpoints such as ResNet18_M8_5e-1cal.pth.",
+    "finding": "The released repository does not contain an executable end-to-end plain SRe2L++ baseline pipeline for any of the three fine-grained datasets."
+  },
   "finding": "The official FD2 repository at the audited commit publishes code and three visualization/result figures, but no teacher checkpoints, patch trees, recovered datasets, FKD labels, archives, Git LFS objects, or GitHub release assets.",
   "reproduction_implication": "Training a fresh teacher and generating fresh patches is required and is not a deviation from an available official artifact."
 }
