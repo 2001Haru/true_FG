@@ -64,6 +64,24 @@
       "patch_factor": 2
     }
   },
+  "patch_initialization_equivalence": {
+    "reference": "FD2/RDED_patch.py at official commit 08006ec088b3e1bda25facda7835a5d174e169f0",
+    "implementation": "CV-DD/fine_grained/make_patches.py",
+    "equivalent_steps": [
+      "Use the minimum per-class image count as the patch-source IPC (CUB=29, Aircraft=66, Cars=24).",
+      "Take source images in sorted dataset order.",
+      "Generate five RandomResizedCrop candidates at 112x112 with ratio fixed to 1 and antialiasing enabled.",
+      "Center-pad candidates to 224x224 and rank them with plain-teacher cross-entropy for the source class.",
+      "Select the four lowest-cross-entropy crops and assemble a 2x2 mosaic.",
+      "Resize the assembled mosaic using torch.nn.functional.interpolate with its default nearest-neighbor mode and save as JPEG."
+    ],
+    "intentional_non_algorithmic_extensions": [
+      "Seed each class/source group deterministically for reproducible candidate generation.",
+      "Write provenance manifests and content hashes.",
+      "Apply the official minimum-count rule to Aircraft and Cars, whose plain-baseline patch shells were not released."
+    ],
+    "conclusion": "No patch-generation discrepancy explains the first Aircraft IPC1 post-evaluation failure."
+  },
   "student_training_math": {
     "teacher_logits": "Plain-teacher logits, equivalent to selecting the backbone branch in the released FD2 dual-branch FKD payload.",
     "loss": "KLDivLoss(reduction=batchmean) between log_softmax(student_logits / 20) and softmax(teacher_logits / 20)",
