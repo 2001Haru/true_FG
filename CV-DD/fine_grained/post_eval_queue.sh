@@ -7,6 +7,7 @@ shift
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXP_ROOT="${EXP_ROOT:-/linxi/dataset/FG_SRe2L_repro/v1}"
+WAIT_SECONDS="${WAIT_SECONDS:-300}"
 LOG_ROOT="$EXP_ROOT/logs/jobs"
 STATUS_ROOT="$EXP_ROOT/queue_status"
 STUDENT_SEEDS=(42 43 44)
@@ -18,7 +19,7 @@ wait_for_recovery() {
     local status="$STATUS_ROOT/${DATASET}_rseed${recovery_seed}.status"
     while [[ ! -f "$status" ]] || ! grep -q 'sampling complete' "$status"; do
         echo "$(date --iso-8601=seconds) waiting for completed recovery: $status" >&2
-        sleep 30
+        sleep "$WAIT_SECONDS"
     done
 }
 

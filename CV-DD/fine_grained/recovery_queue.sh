@@ -9,6 +9,7 @@ shift 2
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXP_ROOT="${EXP_ROOT:-/linxi/dataset/FG_SRe2L_repro/v1}"
+WAIT_SECONDS="${WAIT_SECONDS:-300}"
 TEACHER_SEED="${TEACHER_SEED:-42}"
 PATCH_SEED="${PATCH_SEED:-42}"
 LOG_ROOT="$EXP_ROOT/logs/jobs"
@@ -22,7 +23,7 @@ wait_for_file() {
     local path="$1" description="$2"
     while [[ ! -f "$path" ]]; do
         echo "$(date --iso-8601=seconds) waiting for $description: $path" >&2
-        sleep 30
+        sleep "$WAIT_SECONDS"
     done
 }
 

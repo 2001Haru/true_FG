@@ -9,6 +9,7 @@ TEMPERATURE="${5:?missing temperature}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXP_ROOT="${EXP_ROOT:-/linxi/dataset/FG_SRe2L_repro/v1}"
+WAIT_SECONDS="${WAIT_SECONDS:-300}"
 FORMAL_RESULT="$EXP_ROOT/results/$DATASET/rseed${RECOVERY_SEED}/ipc${IPC}_sseed${STUDENT_SEED}.json"
 TAG="temperature_${TEMPERATURE//./p}"
 DIAGNOSTIC_ROOT="$EXP_ROOT/diagnostics/$TAG"
@@ -17,7 +18,7 @@ mkdir -p "$DIAGNOSTIC_ROOT"
 
 while [[ ! -f "$FORMAL_RESULT" ]]; do
     echo "$(date --iso-8601=seconds) waiting for formal result: $FORMAL_RESULT"
-    sleep 60
+    sleep "$WAIT_SECONDS"
 done
 
 echo "$(date --iso-8601=seconds) formal result observed; launching T=$TEMPERATURE" > "$STATUS"
