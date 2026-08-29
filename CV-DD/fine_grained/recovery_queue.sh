@@ -14,6 +14,7 @@ PATCH_SEED="${PATCH_SEED:-42}"
 LOG_ROOT="$EXP_ROOT/logs/jobs"
 STATUS_ROOT="$EXP_ROOT/queue_status"
 TEACHER_COMPLETE="$EXP_ROOT/teachers/$DATASET/tseed${TEACHER_SEED}/complete.json"
+TEACHER_DIR="$EXP_ROOT/teachers/$DATASET/tseed${TEACHER_SEED}"
 PATCH_COMPLETE="$EXP_ROOT/patches/$DATASET/tseed${TEACHER_SEED}_pseed${PATCH_SEED}/2/patch_manifest.json"
 mkdir -p "$LOG_ROOT" "$STATUS_ROOT"
 
@@ -29,6 +30,9 @@ wait_for_file "$TEACHER_COMPLETE" "teacher completion"
 if [[ -n "${ADDITIONAL_WAIT_FILE:-}" ]]; then
     wait_for_file "$ADDITIONAL_WAIT_FILE" "additional GPU-owner completion"
 fi
+python "$ROOT_DIR/fine_grained/check_teacher_gate.py" \
+    --dataset-name "$DATASET" --teacher-dir "$TEACHER_DIR" \
+    --tolerance "${TEACHER_GATE_TOLERANCE:-3.0}"
 
 if [[ "$BUILD_PATCHES" == 1 && ! -f "$PATCH_COMPLETE" ]]; then
     echo "$(date --iso-8601=seconds) generating patches for $DATASET"

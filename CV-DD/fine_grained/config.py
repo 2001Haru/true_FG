@@ -10,6 +10,7 @@ class FineGrainedDataset:
     recovery_iterations: int
     fkd_batch_size: int
     accumulation_steps: int
+    teacher_reference_top1: float
     paper_targets: tuple[float, float, float]
 
     @property
@@ -31,6 +32,7 @@ DATASETS = {
         recovery_iterations=10_000,
         fkd_batch_size=20,
         accumulation_steps=2,
+        teacher_reference_top1=71.6,
         paper_targets=(53.4, 60.0, 63.5),
     ),
     "A_imsize224": FineGrainedDataset(
@@ -41,6 +43,7 @@ DATASETS = {
         recovery_iterations=4_000,
         fkd_batch_size=20,
         accumulation_steps=2,
+        teacher_reference_top1=83.9,
         paper_targets=(52.6, 66.6, 68.3),
     ),
     "SC_imsize224": FineGrainedDataset(
@@ -51,6 +54,7 @@ DATASETS = {
         recovery_iterations=4_000,
         fkd_batch_size=14,
         accumulation_steps=2,
+        teacher_reference_top1=85.2,
         paper_targets=(52.4, 68.2, 70.9),
     ),
 }
