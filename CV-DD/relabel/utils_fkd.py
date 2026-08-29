@@ -1,4 +1,5 @@
 import os
+import re
 import numpy as np
 import torch
 import torch.distributed
@@ -100,7 +101,15 @@ def get_FKD_info(fkd_path):
         numeric_part = int(s.split('_')[1].split('.tar')[0])
         return numeric_part
     
-    max_epoch = len(os.listdir(fkd_path))
+    epoch_ids = sorted(
+        int(match.group(1))
+        for name in os.listdir(fkd_path)
+        if (match := re.fullmatch(r"epoch_(\d+)", name))
+        and os.path.isdir(os.path.join(fkd_path, name))
+    )
+    if epoch_ids != list(range(len(epoch_ids))):
+        raise RuntimeError(f"FKD epoch directories are not contiguous: {epoch_ids[:10]}")
+    max_epoch = len(epoch_ids)
     batch_list = sorted(os.listdir(os.path.join(
         fkd_path, 'epoch_0')), key=custom_sort_key)
     batch_size = torch.load(os.path.join(
