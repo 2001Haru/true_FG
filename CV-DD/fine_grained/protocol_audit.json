@@ -99,6 +99,15 @@
       "conclusion": "The inert pretrained_bn/pretrained_weights=False combination is a material upstream bug candidate. The intended ImageNet-V1 arm is the primary end-to-end reproduction candidate pending IPC1 student results."
     }
   },
+  "student_initialization_observation": {
+    "released_validation_code": "FD2/validate/train_fkd_FD2.py calls load_model(..., pretrained_weights=False, pretrained_bn=False), so ResNet18 is random initialized.",
+    "single_variable_arm": "On the same intended Aircraft rseed41 IPC1 recovery/FKD and student seed42, enable torchvision ResNet18 IMAGENET1K_V1 before replacing the classifier.",
+    "random_student_best_top1": 17.071707170717072,
+    "imagenet_student_best_top1": 56.495649564956494,
+    "imagenet_student_epoch399_top1": 52.655266,
+    "fd2_aircraft_ipc1_target": 52.6,
+    "conclusion": "The ImageNet-initialized student's final-epoch result matches the paper target, while the released random initialization misses by 35.5 points. This is the locked intended-behavior protocol pending multi-seed and cross-dataset confirmation."
+  },
   "patch_initialization_equivalence": {
     "reference": "FD2/RDED_patch.py at official commit 08006ec088b3e1bda25facda7835a5d174e169f0",
     "implementation": "CV-DD/fine_grained/make_patches.py",
