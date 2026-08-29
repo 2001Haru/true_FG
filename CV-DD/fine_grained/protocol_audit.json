@@ -80,6 +80,25 @@
     "initialization_bug_candidate": "The historical launcher requests pretrained_bn while its trainer hard-codes pretrained_weights=False, making that flag inert. An isolated ImageNet-V1 initialization arm is retained as a one-variable intended-behavior diagnostic.",
     "priority": "This deleted official launcher supersedes the earlier inferred ImageNet-V1/batch4/51-epoch plain-teacher arm for the next CUB baseline attempt."
   },
+  "historical_teacher_observations": {
+    "random_initialization_code_faithful": {
+      "CUB_seed42_final_top1": 44.58060062133241,
+      "CUB_seed43_final_top1": 43.821194338971345,
+      "Aircraft_seed42_final_top1": 71.28712871287128,
+      "Cars_seed42_final_top1": 61.46001741076981,
+      "cal_reference_gates_passed": false
+    },
+    "imagenet_v1_intended_behavior": {
+      "single_changed_variable": "Set pretrained_weights=True, making the launcher's pretrained_bn request effective; retain batch32/100 epochs/SGD 1e-2/wd 1e-4/cosine/final checkpoint.",
+      "CUB_seed42_final_top1": 70.76285812909907,
+      "CUB_reference_top1": 71.6,
+      "CUB_gate_passed": true,
+      "Aircraft_seed42_final_top1": 83.64836483648365,
+      "Aircraft_reference_top1": 83.9,
+      "Aircraft_gate_passed": true,
+      "conclusion": "The inert pretrained_bn/pretrained_weights=False combination is a material upstream bug candidate. The intended ImageNet-V1 arm is the primary end-to-end reproduction candidate pending IPC1 student results."
+    }
+  },
   "patch_initialization_equivalence": {
     "reference": "FD2/RDED_patch.py at official commit 08006ec088b3e1bda25facda7835a5d174e169f0",
     "implementation": "CV-DD/fine_grained/make_patches.py",
