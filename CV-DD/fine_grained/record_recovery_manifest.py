@@ -1,4 +1,5 @@
 import argparse
+import datetime
 import hashlib
 import json
 import os
@@ -54,6 +55,15 @@ def main() -> None:
     if patch_files != cfg.classes * 5:
         raise RuntimeError(f"Patch files {patch_files} != expected {cfg.classes * 5}")
     repo_root = Path(__file__).resolve().parents[2]
+    recorded_revision = git_revision(repo_root)
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    existing = {}
+    if args.output.is_file():
+        existing = json.loads(args.output.read_text(encoding="utf-8"))
+    started_revision = existing.get(
+        "started_git_revision", existing.get("git_revision", recorded_revision)
+    )
+    started_at = existing.get("started_at", now)
     payload = {
         "status": args.status,
         "dataset": cfg.to_dict(),
@@ -78,8 +88,13 @@ def main() -> None:
             "augmentation": "RandomResizedCrop(224)+RandomHorizontalFlip",
             "initialization": "2x2 patches",
         },
-        "git_revision": git_revision(repo_root),
+        "git_revision": started_revision,
+        "started_git_revision": started_revision,
+        "recorded_git_revision": recorded_revision,
+        "started_at": started_at,
     }
+    if args.status == "complete":
+        payload["completed_at"] = now
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_suffix(args.output.suffix + ".tmp")
     temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
