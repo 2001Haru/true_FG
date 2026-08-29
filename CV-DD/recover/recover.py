@@ -149,7 +149,7 @@ def get_images(args, hook_for_display, device, num_call, is_first_ipc):
         if args.store_best_images:
             best_inputs = inputs.data.clone()
             best_inputs = utils_re.denormalize(best_inputs, args)
-            save_images(args, best_inputs, targets, ipc_id)
+            save_images(args, best_inputs, targets, num_call)
 
         optimizer.state = collections.defaultdict(dict)
         torch.cuda.empty_cache()
@@ -347,6 +347,22 @@ def parse_args():
         args.input_size = 224
         # Only the single-teacher SRe2L++ setting is used by the CUB runner.
         args.model_prior_weight_dict = {'ResNet18': 72.5}
+
+    elif args.dataset_name == 'A_imsize224':
+        args.mean_norm = [0.4865, 0.5177, 0.5425]
+        args.std_norm = [0.2124, 0.2051, 0.2375]
+        args.ncls = 100
+        args.jitter = 32
+        args.input_size = 224
+        args.model_prior_weight_dict = {'ResNet18': 83.9}
+
+    elif args.dataset_name == 'SC_imsize224':
+        args.mean_norm = [0.4708, 0.4601, 0.4551]
+        args.std_norm = [0.2885, 0.2879, 0.2962]
+        args.ncls = 196
+        args.jitter = 32
+        args.input_size = 224
+        args.model_prior_weight_dict = {'ResNet18': 85.2}
         
     else:
         raise ValueError('dataset not supported')
@@ -437,7 +453,9 @@ if __name__ == '__main__':
         np.random.seed(args.seed)
         torch.manual_seed(args.seed)
         torch.cuda.manual_seed_all(args.seed)
-    if torch.cuda.is_available():
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+    elif torch.cuda.is_available():
         torch.backends.cudnn.benchmark = True
     print(args)
     #set up device

@@ -272,7 +272,10 @@ def get_img2batch_idx_list(num_img = 50000, batch_size = 1024, seed=42, epochs=3
  
 def load_model(args, model_name):
     teacher_ncls = getattr(args, 'teacher_num_classes', None) or args.ncls
-    if args.dataset_name in ('imagenet100', 'imagenet-nette', 'imagenet1k', 'CUB_imsize224'):
+    if args.dataset_name in (
+        'imagenet100', 'imagenet-nette', 'imagenet1k',
+        'CUB_imsize224', 'A_imsize224', 'SC_imsize224',
+    ):
         if model_name == 'ResNet18':
             model = models.resnet18(weights=None)
         model.fc = nn.Linear(model.fc.in_features, teacher_ncls)

@@ -252,7 +252,10 @@ def load_recover_model(recover_model_name_list, args, device):
     weight_list = []
     for curr_recover_model_name in recover_model_name_list:
         if args.pretrained_model_type == 'offline':
-            if args.dataset_name in ('imagenet100', 'imagenet-nette', 'imagenet1k', 'CUB_imsize224'):
+            if args.dataset_name in (
+                'imagenet100', 'imagenet-nette', 'imagenet1k',
+                'CUB_imsize224', 'A_imsize224', 'SC_imsize224',
+            ):
                 # code for imagenet100
                 teacher_ncls = args.teacher_num_classes or args.ncls
                 if curr_recover_model_name == 'ResNet18':

@@ -102,9 +102,8 @@ def load_val_loader(args):
             transforms.ToTensor(),
             transforms.Normalize(mean=args.mean_norm, std=args.std_norm)
         ])
-    elif args.dataset_name == "CUB_imsize224":
+    elif args.dataset_name in ("CUB_imsize224", "A_imsize224", "SC_imsize224"):
         transform_test = transforms.Compose([
-            transforms.Resize((224, 224), antialias=True),
             transforms.ToTensor(),
             transforms.Normalize(mean=args.mean_norm, std=args.std_norm)
         ])

@@ -263,6 +263,20 @@ def get_args():
         args.input_size = 224
         args.adamw_lr = 0.001
         args.eta = 2
+    elif args.dataset_name == 'A_imsize224':
+        args.mean_norm = [0.4865, 0.5177, 0.5425]
+        args.std_norm = [0.2124, 0.2051, 0.2375]
+        args.ncls = 100
+        args.input_size = 224
+        args.adamw_lr = 0.001
+        args.eta = 2
+    elif args.dataset_name == 'SC_imsize224':
+        args.mean_norm = [0.4708, 0.4601, 0.4551]
+        args.std_norm = [0.2885, 0.2879, 0.2962]
+        args.ncls = 196
+        args.input_size = 224
+        args.adamw_lr = 0.001
+        args.eta = 2
     else:
         raise ValueError('dataset not supported')
 
