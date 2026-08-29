@@ -1,0 +1,52 @@
+{
+  "paper": {
+    "title": "FD2: Fine-grained Dataset Distillation",
+    "arxiv_id": "2603.25144",
+    "versions_compared": ["v1", "v2"]
+  },
+  "scope": "SRe2L++ baseline on CUB-200-2011, FGVC-Aircraft, and Stanford Cars with a ResNet18 student",
+  "invariants_across_v1_v2": {
+    "input_resolution": "All images are physically resized to 224x224.",
+    "ipc": [1, 3, 5],
+    "post_evaluation_epochs": 400,
+    "sre2l_plus_plus_initialization": "2x2 patches",
+    "main_table_sre2l_plus_plus_top1": {
+      "CUB_imsize224": [53.4, 60.0, 63.5],
+      "Aircraft_imsize224": [52.6, 66.6, 68.3],
+      "SC_imsize224": [52.4, 68.2, 70.9]
+    },
+    "resnet18_cal_table": {
+      "CUB_imsize224": {
+        "attention_maps": 8,
+        "cal_ratio": 0.5,
+        "backbone_top1": 71.6,
+        "cal_top1": 76.1
+      },
+      "Aircraft_imsize224": {
+        "attention_maps": 32,
+        "cal_ratio": 0.3,
+        "backbone_top1": 83.9,
+        "cal_top1": 84.6
+      },
+      "SC_imsize224": {
+        "attention_maps": 8,
+        "cal_ratio": 0.3,
+        "backbone_top1": 85.2,
+        "cal_top1": 88.6
+      }
+    }
+  },
+  "v2_clarifications": [
+    "SRe2L++ and its FD2 variant use the standard same-architecture evaluation protocol.",
+    "FADRM+ uses multiple teachers for distillation and one student for post-evaluation."
+  ],
+  "not_disclosed_by_either_version": [
+    "baseline recovery learning rate",
+    "baseline batch-normalization regularization weight",
+    "baseline recovery iteration count",
+    "FKD batch and forward-sub-batch sizes",
+    "soft-label temperature",
+    "post-evaluation optimizer learning rate and weight decay"
+  ],
+  "reproduction_policy": "Use the released FD2/CV-DD code values for undisclosed settings, preserve them in config.py and run_sre2l_fg.sh, and treat the unchanged v1/v2 main-table values as the primary targets."
+}
