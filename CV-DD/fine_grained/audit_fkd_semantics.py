@@ -17,6 +17,7 @@ def main() -> None:
     parser.add_argument("--fkd-dir", required=True, type=Path)
     parser.add_argument("--epochs", nargs="+", type=int, default=(0, 100, 200, 399))
     parser.add_argument("--fkd-seed", type=int, default=42)
+    parser.add_argument("--temperatures", nargs="+", type=float, default=(1.0, 3.0, 20.0))
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     cfg = get_dataset(args.dataset_name)
@@ -66,11 +67,12 @@ def main() -> None:
         strongest_other = logits.masked_fill(mask, float("-inf")).max(1).values
 
         temperature_stats = {}
-        for temperature in (1.0, 20.0):
+        for temperature in args.temperatures:
             probabilities = torch.softmax(logits / temperature, dim=1)
             target_probability = probabilities.gather(1, labels[:, None]).squeeze(1)
             entropy = -(probabilities * probabilities.clamp_min(1e-12).log()).sum(1)
-            temperature_stats[str(int(temperature))] = {
+            key = str(int(temperature)) if temperature.is_integer() else str(temperature)
+            temperature_stats[key] = {
                 "mean_target_probability": target_probability.mean().item(),
                 "median_target_probability": target_probability.median().item(),
                 "mean_entropy_nats": entropy.mean().item(),
