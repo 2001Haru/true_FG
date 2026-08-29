@@ -95,6 +95,29 @@ def main() -> None:
                 missing.append({"dataset": dataset_name, "ipc": ipc, "runs": missing_group})
             values = [run["top1"] for run in group]
             target = cfg.paper_targets[target_index]
+            by_recovery_seed = {}
+            for recovery_seed in EXPECTED_RECOVERY_SEEDS:
+                seed_values = [
+                    run["top1"] for run in group
+                    if run["recovery_seed"] == recovery_seed
+                ]
+                by_recovery_seed[str(recovery_seed)] = {
+                    "count": len(seed_values),
+                    "mean": statistics.mean(seed_values) if seed_values else None,
+                    "sample_std": statistics.stdev(seed_values) if len(seed_values) > 1 else None,
+                }
+            by_student_seed = {}
+            for student_seed in EXPECTED_STUDENT_SEEDS:
+                seed_values = [
+                    run["top1"] for run in group
+                    if run["student_seed"] == student_seed
+                ]
+                by_student_seed[str(student_seed)] = {
+                    "count": len(seed_values),
+                    "mean": statistics.mean(seed_values) if seed_values else None,
+                    "sample_std": statistics.stdev(seed_values) if len(seed_values) > 1 else None,
+                }
+            closest = min(group, key=lambda run: abs(run["top1"] - target)) if group else None
             rows.append({
                 "dataset": dataset_name,
                 "ipc": ipc,
@@ -105,6 +128,17 @@ def main() -> None:
                 "maximum": max(values) if values else None,
                 "fd2_target": target,
                 "mean_minus_target": statistics.mean(values) - target if values else None,
+                "target_inside_observed_range": (
+                    min(values) <= target <= max(values) if values else None
+                ),
+                "closest_run": ({
+                    "recovery_seed": closest["recovery_seed"],
+                    "student_seed": closest["student_seed"],
+                    "top1": closest["top1"],
+                    "delta": closest["top1"] - target,
+                } if closest else None),
+                "by_recovery_seed": by_recovery_seed,
+                "by_student_seed": by_student_seed,
                 "missing": missing_group,
             })
 
@@ -123,8 +157,8 @@ def main() -> None:
     lines = [
         "# Fine-grained SRe2L++ reproduction summary",
         "",
-        "| Dataset | IPC | Runs | Mean | Std | Min | Max | FD2 target | Delta |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Dataset | IPC | Runs | Mean | Std | Min | Max | FD2 target | Delta | In range |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
     for row in rows:
         def value(name: str) -> str:
@@ -133,7 +167,8 @@ def main() -> None:
         lines.append(
             f"| {row['dataset']} | {row['ipc']} | {row['count']}/9 | "
             f"{value('mean')} | {value('sample_std')} | {value('minimum')} | "
-            f"{value('maximum')} | {row['fd2_target']:.3f} | {value('mean_minus_target')} |"
+            f"{value('maximum')} | {row['fd2_target']:.3f} | {value('mean_minus_target')} | "
+            f"{('-' if row['target_inside_observed_range'] is None else row['target_inside_observed_range'])} |"
         )
     if missing:
         lines.extend(["", "## Missing runs", ""])
