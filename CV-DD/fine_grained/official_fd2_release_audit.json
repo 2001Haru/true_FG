@@ -1,0 +1,21 @@
+{
+  "audit_date": "2026-08-30",
+  "repository": "https://github.com/Guang000/FD2",
+  "branch": "main",
+  "commit": "08006ec088b3e1bda25facda7835a5d174e169f0",
+  "tracked_files": 116,
+  "tracked_binary_or_archive_files": [
+    "figure/MainTable.png",
+    "figure/VisualizationDistilledSamples.png",
+    "figure/overview.jpg"
+  ],
+  "git_lfs_pointers": [],
+  "github_releases": [],
+  "readme_behavior": {
+    "teacher": "The squeeze scripts train and save pretrained models locally; no checkpoint download is linked.",
+    "patches": "RDED_patch.py generates patch initialization from original training data and a classifier.",
+    "smaller_ipc": "get_small_ipc_from_big_ipc.py derives IPC1/3 from a recovered IPC5 tree."
+  },
+  "finding": "The official FD2 repository at the audited commit publishes code and three visualization/result figures, but no teacher checkpoints, patch trees, recovered datasets, FKD labels, archives, Git LFS objects, or GitHub release assets.",
+  "reproduction_implication": "Training a fresh teacher and generating fresh patches is required and is not a deviation from an available official artifact."
+}
