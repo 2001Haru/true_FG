@@ -28,7 +28,9 @@ def main() -> None:
     if not completion_path.is_file() or not checkpoint_path.is_file():
         raise FileNotFoundError("Teacher completion/checkpoint is missing")
     completion = json.loads(completion_path.read_text(encoding="utf-8"))
-    accuracy = float(completion["best_validation_accuracy"])
+    accuracy = float(completion.get(
+        "selected_validation_accuracy", completion["best_validation_accuracy"]
+    ))
     threshold = cfg.teacher_reference_top1 - args.tolerance
     passed = accuracy >= threshold
     payload = {
@@ -36,7 +38,7 @@ def main() -> None:
         "teacher_dir": str(args.teacher_dir.resolve()),
         "teacher_sha256": sha256(checkpoint_path),
         "best_validation_accuracy": accuracy,
-        "best_epoch": completion["best_epoch"],
+        "best_epoch": completion.get("selected_epoch", completion["best_epoch"]),
         "reference_top1": cfg.teacher_reference_top1,
         "tolerance": args.tolerance,
         "threshold": threshold,

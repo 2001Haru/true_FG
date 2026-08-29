@@ -64,6 +64,21 @@
       "patch_factor": 2
     }
   },
+  "historical_plain_teacher_protocol": {
+    "source_commit": "e07285bd74d3e3ea6398e823f5090018d75e9924",
+    "deletion_commit": "908d10dfa2ce48a63fbc5c24aff51535353ff139",
+    "launcher_scope": "CUB_imsize224 only",
+    "initialization": "random torchvision ResNet18",
+    "epochs": 100,
+    "batch_size": 32,
+    "optimizer": "SGD",
+    "learning_rate": 0.01,
+    "momentum": 0.9,
+    "weight_decay": 0.0001,
+    "scheduler": "CosineAnnealingLR with eta_min=1e-5",
+    "checkpoint_selection": "final epoch",
+    "priority": "This deleted official launcher supersedes the earlier inferred ImageNet-V1/batch4/51-epoch plain-teacher arm for the next CUB baseline attempt."
+  },
   "patch_initialization_equivalence": {
     "reference": "FD2/RDED_patch.py at official commit 08006ec088b3e1bda25facda7835a5d174e169f0",
     "implementation": "CV-DD/fine_grained/make_patches.py",
@@ -118,5 +133,5 @@
     "soft-label temperature",
     "post-evaluation optimizer learning rate and weight decay"
   ],
-  "reproduction_policy": "Use the released FD2/CV-DD code values for undisclosed settings, preserve them in config.py and run_sre2l_fg.sh, and treat the unchanged v1/v2 main-table values as the primary targets."
+  "reproduction_policy": "Use the deleted official plain-teacher launcher for the next CUB baseline arm, retain completed ImageNet-V1 teacher runs as explicitly labeled reconstruction evidence, use released FD2/CV-DD values for still-undisclosed recovery/relabel settings, and treat the unchanged v1/v2 main-table values as the primary targets."
 }

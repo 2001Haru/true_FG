@@ -18,6 +18,31 @@
     "sha256_mismatches": 0,
     "exact_match": true
   },
+  "git_history_audit": {
+    "commits_checked": 13,
+    "plain_teacher_source_commit": "e07285bd74d3e3ea6398e823f5090018d75e9924",
+    "deleted_by_commit": "908d10dfa2ce48a63fbc5c24aff51535353ff139",
+    "deleted_files": {
+      "squeeze/squeeze.py": "f0191c72ce8ccb00e5fc29428cd00253c9890d07",
+      "squeeze/scripts/squeeze_CUB_imsize224_resnet18.sh": "5f5ca381cfc90b5fedb6aa728a611755f8787002"
+    },
+    "unchanged_dependency_blobs_through_head": {
+      "squeeze/utils_squeeze.py": "09e4a2be3d8a4df6e0d0e0133f830b33ae7e1ee6",
+      "models/utils_models.py": "181143f061fcb023219de54998e536f80bbdc2b8"
+    },
+    "historical_plain_teacher_protocol": {
+      "initialization": "random torchvision ResNet18; pretrained_weights=False",
+      "epochs": 100,
+      "batch_size": 32,
+      "optimizer": "SGD",
+      "learning_rate": 0.01,
+      "momentum": 0.9,
+      "weight_decay": 0.0001,
+      "scheduler": "CosineAnnealingLR(T_max=100, eta_min=1e-5)",
+      "checkpoint": "final epoch ResNet18.pth"
+    },
+    "coverage": "Only a CUB plain-teacher launcher existed. No commit contains the referenced plain recover/recover.py or plain baseline relabel/validation launchers."
+  },
   "readme_behavior": {
     "teacher": "The squeeze scripts train and save pretrained models locally; no checkpoint download is linked.",
     "patches": "RDED_patch.py generates patch initialization from original training data and a classifier.",
@@ -34,7 +59,7 @@
       "recover/recover_FD2.py",
       "recover/recover_FD2_FADRM.py"
     ],
-    "checkpoint_contract_gap": "The baseline loader expects <model_pool>/ResNet18.pth, while released squeeze scripts only create CAL-suffixed checkpoints such as ResNet18_M8_5e-1cal.pth.",
+    "checkpoint_contract_gap": "HEAD only has CAL-suffixed squeeze launchers, but Git history resolves the plain ResNet18.pth teacher contract: the plain trainer/launcher were added in e07285b and deleted in 908d10f. Recovery/relabel/validation remain unresolved.",
     "finding": "The released repository does not contain an executable end-to-end plain SRe2L++ baseline pipeline for any of the three fine-grained datasets."
   },
   "upstream_reproduction_issue": {
