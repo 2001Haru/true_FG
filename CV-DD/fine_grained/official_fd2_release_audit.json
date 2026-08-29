@@ -41,6 +41,7 @@
       "scheduler": "CosineAnnealingLR(T_max=100, eta_min=1e-5)",
       "checkpoint": "final epoch ResNet18.pth"
     },
+    "plain_teacher_initialization_bug_candidate": "The launcher passes --pretrained_bn, but squeeze.py hard-codes pretrained_weights=False when calling load_model. For torchvision ResNet18 this makes pretrained_bn inert and leaves the whole backbone randomly initialized. The later CAL trainer adds and uses an explicit --pretrained_weights flag.",
     "coverage": "Only a CUB plain-teacher launcher existed. No commit contains the referenced plain recover/recover.py or plain baseline relabel/validation launchers."
   },
   "readme_behavior": {

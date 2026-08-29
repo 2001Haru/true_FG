@@ -77,6 +77,7 @@
     "weight_decay": 0.0001,
     "scheduler": "CosineAnnealingLR with eta_min=1e-5",
     "checkpoint_selection": "final epoch",
+    "initialization_bug_candidate": "The historical launcher requests pretrained_bn while its trainer hard-codes pretrained_weights=False, making that flag inert. An isolated ImageNet-V1 initialization arm is retained as a one-variable intended-behavior diagnostic.",
     "priority": "This deleted official launcher supersedes the earlier inferred ImageNet-V1/batch4/51-epoch plain-teacher arm for the next CUB baseline attempt."
   },
   "patch_initialization_equivalence": {

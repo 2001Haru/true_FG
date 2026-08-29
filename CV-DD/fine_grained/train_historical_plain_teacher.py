@@ -59,6 +59,12 @@ def main() -> None:
     parser.add_argument("--momentum", type=float, default=0.9)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--eta-min", type=float, default=1e-5)
+    parser.add_argument(
+        "--initialization",
+        choices=("random", "imagenet-v1"),
+        default="random",
+        help="random exactly matches the deleted launcher; imagenet-v1 tests its inert pretrained_bn intent",
+    )
     parser.add_argument("--skip-completed", action="store_true")
     args = parser.parse_args()
 
@@ -78,13 +84,18 @@ def main() -> None:
     completion_path = args.output_dir / "complete.json"
     if args.skip_completed and completion_path.is_file():
         completion = json.loads(completion_path.read_text(encoding="utf-8"))
-        if completion.get("status") == "complete" and completion.get("seed") == args.seed:
+        if (completion.get("status") == "complete" and
+                completion.get("seed") == args.seed and
+                completion.get("initialization", "random") == args.initialization):
             print(f"Historical plain teacher already complete: {completion_path}")
             return
 
     seed_everything(args.seed)
     train_loader, test_loader = load_dataset(0, args)
-    model = load_model("ResNet18", cfg.classes, "torchvision", False, True).cuda()
+    use_imagenet_weights = args.initialization == "imagenet-v1"
+    model = load_model(
+        "ResNet18", cfg.classes, "torchvision", use_imagenet_weights, True
+    ).cuda()
     criterion = nn.CrossEntropyLoss().cuda()
     optimizer = torch.optim.SGD(
         model.parameters(),
@@ -100,11 +111,15 @@ def main() -> None:
         "status": "running",
         "dataset": cfg.name,
         "seed": args.seed,
+        "initialization": args.initialization,
         "source_commit": SOURCE_COMMIT,
         "source_trainer_blob": SOURCE_TRAINER_BLOB,
         "source_launcher_blob": SOURCE_LAUNCHER_BLOB,
         "historical_launcher": "squeeze/scripts/squeeze_CUB_imsize224_resnet18.sh",
-        "initial_weights": "random torchvision ResNet18",
+        "initial_weights": (
+            "torchvision ResNet18 IMAGENET1K_V1"
+            if use_imagenet_weights else "random torchvision ResNet18"
+        ),
         "pretrained_bn_flag": True,
         "epochs": args.epochs,
         "batch_size": args.batch_size,
@@ -116,7 +131,11 @@ def main() -> None:
         "eta_min": args.eta_min,
         "augmentation": "HorizontalFlip+ColorJitter(0.2,0.2,0.2,0.1)+Rotation(15deg)",
         "checkpoint_selection": "final epoch, matching deleted upstream trainer",
-        "provenance_extension": "Explicit global seed and manifests; numerical launcher values are unchanged.",
+        "provenance_extension": (
+            "Explicit global seed and manifests; numerical launcher values are unchanged."
+            if not use_imagenet_weights else
+            "Single-variable diagnostic: enable ImageNet-V1 weights suggested by the otherwise inert pretrained_bn flag."
+        ),
     }
     atomic_json_dump(manifest, args.output_dir / "manifest.json")
     metrics_path = args.output_dir / "metrics.jsonl"
