@@ -26,6 +26,16 @@ LOG="$DIAGNOSTIC_ROOT/squeeze.log"
 STATUS="$DIAGNOSTIC_ROOT/status.txt"
 mkdir -p "$RAW_DIR" "$EXTRACTED_DIR"
 
+if [[ -n "${WAIT_FOR_STATUS:-}" ]]; then
+    WAIT_SECONDS="${WAIT_SECONDS:-300}"
+    WAIT_STATUS_PATTERN="${WAIT_STATUS_PATTERN:-sampling complete}"
+    while [[ ! -f "$WAIT_FOR_STATUS" ]] || \
+          ! grep -q "$WAIT_STATUS_PATTERN" "$WAIT_FOR_STATUS"; do
+        echo "$(date --iso-8601=seconds) waiting for status: $WAIT_FOR_STATUS"
+        sleep "$WAIT_SECONDS"
+    done
+fi
+
 [[ -d "$DATA_DIR/train" && -d "$DATA_DIR/test" ]] || {
     echo "Prepared dataset missing: $DATA_DIR" >&2
     exit 1
