@@ -14,19 +14,45 @@ from config import get_dataset
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
 
-def image_stats(task) -> tuple[np.ndarray, np.ndarray, int, np.ndarray, np.ndarray, str]:
-    path_text, allow_variable_size = task
+def resize_shorter(image: Image.Image, shorter: int) -> Image.Image:
+    width, height = image.size
+    if width <= height:
+        size = (shorter, int(shorter * height / width))
+    else:
+        size = (int(shorter * width / height), shorter)
+    return image.resize(size, Image.Resampling.BILINEAR)
+
+
+def apply_decode_transform(image: Image.Image, mode: str) -> Image.Image:
+    if mode == "none":
+        return image
+    if mode == "warp224":
+        return image.resize((224, 224), Image.Resampling.BILINEAR)
+    shorter = 224 if mode == "shorter224_centercrop224" else 256
+    image = resize_shorter(image, shorter)
+    width, height = image.size
+    left = (width - 224) // 2
+    top = (height - 224) // 2
+    return image.crop((left, top, left + 224, top + 224))
+
+
+def image_stats(task) -> tuple[np.ndarray, np.ndarray, int, np.ndarray, np.ndarray, str, str]:
+    path_text, allow_variable_size, decode_transform = task
     path = Path(path_text)
     with Image.open(path) as image:
         image = image.convert("RGB")
-        size = image.size
-        if not allow_variable_size and size != (224, 224):
+        source_size = image.size
+        image = apply_decode_transform(image, decode_transform)
+        decoded_size = image.size
+        if not allow_variable_size and decoded_size != (224, 224):
             raise RuntimeError(f"not 224x224: {path} ({image.size})")
         pixels = np.asarray(image, dtype=np.float64).reshape(-1, 3) / 255.0
     square = np.square(pixels)
     return (
         pixels.sum(axis=0), square.sum(axis=0), pixels.shape[0],
-        pixels.mean(axis=0), square.mean(axis=0), f"{size[0]}x{size[1]}",
+        pixels.mean(axis=0), square.mean(axis=0),
+        f"{source_size[0]}x{source_size[1]}",
+        f"{decoded_size[0]}x{decoded_size[1]}",
     )
 
 
@@ -37,6 +63,10 @@ def main() -> None:
     parser.add_argument("--split", default="train")
     parser.add_argument("--workers", default=4, type=int)
     parser.add_argument("--allow-variable-size", action="store_true")
+    parser.add_argument(
+        "--decode-transform", default="none",
+        choices=("none", "warp224", "shorter224_centercrop224", "shorter256_centercrop224"),
+    )
     parser.add_argument("--include-stems-file", type=Path,
                         help="optional split list whose first whitespace-delimited field is an image stem")
     parser.add_argument("--output", type=Path)
@@ -67,11 +97,15 @@ def main() -> None:
     equal_image_mean_sum = np.zeros(3, dtype=np.float64)
     equal_image_square_mean_sum = np.zeros(3, dtype=np.float64)
     pixels = 0
-    sizes = Counter()
+    source_sizes = Counter()
+    decoded_sizes = Counter()
     with Pool(processes=args.workers) as pool:
-        tasks = ((str(path), args.allow_variable_size) for path in paths)
+        tasks = (
+            (str(path), args.allow_variable_size, args.decode_transform)
+            for path in paths
+        )
         for (partial_sum, partial_square_sum, partial_pixels,
-             image_mean, image_square_mean, size) in pool.imap_unordered(
+             image_mean, image_square_mean, source_size, decoded_size) in pool.imap_unordered(
             image_stats, tasks, chunksize=16
         ):
             channel_sum += partial_sum
@@ -79,7 +113,8 @@ def main() -> None:
             equal_image_mean_sum += image_mean
             equal_image_square_mean_sum += image_square_mean
             pixels += partial_pixels
-            sizes[size] += 1
+            source_sizes[source_size] += 1
+            decoded_sizes[decoded_size] += 1
     mean = channel_sum / pixels
     variance = np.maximum(channel_square_sum / pixels - np.square(mean), 0.0)
     std = np.sqrt(variance)
@@ -100,7 +135,9 @@ def main() -> None:
             str(args.include_stems_file.resolve()) if args.include_stems_file else None
         ),
         "pixels": pixels,
-        "decoded_sizes": dict(sorted(sizes.items())),
+        "decode_transform": args.decode_transform,
+        "source_sizes": dict(sorted(source_sizes.items())),
+        "decoded_sizes": dict(sorted(decoded_sizes.items())),
         "mean": mean.tolist(),
         "std_population": std.tolist(),
         "mean_equal_image_weight": equal_image_mean.tolist(),
