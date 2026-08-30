@@ -26,7 +26,7 @@ python "$ROOT_DIR/fine_grained/build_reproduction_report.py" \
     --summary-dir "$OUTPUT_DIR" --output "$OUTPUT_DIR/reproduction_report.md"
 
 git_revision="$(git -C "$ROOT_DIR" rev-parse HEAD)"
-python - "$OUTPUT_DIR" "$git_revision" <<'PY'
+python - "$OUTPUT_DIR" "$git_revision" "$ROOT_DIR" <<'PY'
 import hashlib
 import json
 import sys
@@ -35,6 +35,7 @@ from pathlib import Path
 
 output_dir = Path(sys.argv[1])
 git_revision = sys.argv[2]
+root_dir = Path(sys.argv[3])
 inputs = {
     "protocol_provenance": output_dir / "protocol_provenance.json",
     "locked_results": output_dir / "locked_results.json",
@@ -44,9 +45,6 @@ inputs = {
 }
 payloads = {name: json.loads(path.read_text(encoding="utf-8")) for name, path in inputs.items()}
 statuses = {name: payload["status"] for name, payload in payloads.items()}
-if any(status != "complete" for status in statuses.values()):
-    raise RuntimeError(f"locked reproduction is incomplete: {statuses}")
-
 artifacts = {}
 for name, path in inputs.items():
     artifacts[name] = {
@@ -60,6 +58,14 @@ artifacts["reproduction_report"] = {
     "bytes": report_path.stat().st_size,
     "sha256": hashlib.sha256(report_path.read_bytes()).hexdigest(),
 }
+frozen_audit_path = root_dir / "fine_grained" / "official_fd2_release_audit.json"
+artifacts["historical_release_audit"] = {
+    "path": str(frozen_audit_path.resolve()),
+    "bytes": frozen_audit_path.stat().st_size,
+    "sha256": hashlib.sha256(frozen_audit_path.read_bytes()).hexdigest(),
+}
+if any(status != "complete" for status in statuses.values()):
+    raise RuntimeError(f"locked reproduction is incomplete: {statuses}")
 
 completion = {
     "status": "complete",

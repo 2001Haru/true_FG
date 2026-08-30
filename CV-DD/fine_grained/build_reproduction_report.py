@@ -133,6 +133,8 @@ def main():
     ])
     for name, path in paths.items():
         lines.append(f"| {name} | {required_statuses[name]} | `{path.resolve()}` |")
+    frozen_audit = Path(__file__).resolve().parent / "official_fd2_release_audit.json"
+    lines.append(f"| historical release audit | frozen snapshot | `{frozen_audit}` |")
     if status != "complete":
         lines.extend([
             "",
