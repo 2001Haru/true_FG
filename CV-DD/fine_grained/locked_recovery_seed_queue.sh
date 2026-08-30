@@ -51,7 +51,7 @@ bash "$ROOT_DIR/fine_grained/run_sre2l_fg.sh" sample \
 # Student seed 42 is fixed here. Combined with the rseed41 × sseed42/43/44
 # matrix, this isolates recovery variation without an unnecessary full 3×3
 # recovery/student seed factorial. Generate all FKD streams before evaluation
-# so two independent IPC evaluations can share the selected A100.
+# so all three independent IPC evaluations can share the selected A100.
 for ipc in 1 3 5; do
     bash "$ROOT_DIR/fine_grained/run_sre2l_fg.sh" relabel \
         "$DATASET" "$RECOVERY_SEED" "$ipc" \
@@ -76,21 +76,12 @@ run_eval 1 &
 pid1=$!
 run_eval 3 &
 pid3=$!
-
-set +e
-wait "$pid1"
-status1=$?
-set -e
-if (( status1 != 0 )); then
-    echo "IPC1 evaluation failed with status $status1" > "$STATUS"
-    wait "$pid3" || true
-    exit "$status1"
-fi
-
 run_eval 5 &
 pid5=$!
 
 set +e
+wait "$pid1"
+status1=$?
 wait "$pid3"
 status3=$?
 wait "$pid5"
