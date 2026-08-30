@@ -5,6 +5,7 @@ import re
 import statistics
 from pathlib import Path
 
+from audit_result import audit_payload
 from config import DATASETS
 
 
@@ -12,6 +13,11 @@ DATASET_ORDER = ("CUB_imsize224", "A_imsize224", "SC_imsize224")
 IPCS = (1, 3, 5)
 STUDENT_SEEDS = (42, 43, 44)
 RECOVERY_SEED = 41
+VALIDATION_IMAGES = {
+    "CUB_imsize224": 5794,
+    "A_imsize224": 3333,
+    "SC_imsize224": 8041,
+}
 RESULT_RE = re.compile(r"ipc(?P<ipc>[135])_sseed(?P<seed>\d+)\.json$")
 FINAL_TEST_RE = re.compile(
     r"TEST Iter 399:.*Top-1 err = (?P<error>[0-9]+(?:\.[0-9]+)?)"
@@ -96,6 +102,11 @@ def main():
                     })
                     continue
                 payload = json.loads(path.read_text(encoding="utf-8"))
+                audit_payload(
+                    payload,
+                    DATASETS[dataset_name].classes,
+                    VALIDATION_IMAGES[dataset_name],
+                )
                 if payload.get("training_target") != "fkd_soft_label":
                     raise RuntimeError(f"Unexpected target in {path}")
                 if payload.get("student_initialization") != "imagenet-v1":

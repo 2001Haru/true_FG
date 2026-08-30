@@ -16,11 +16,8 @@ def fail(message: str) -> None:
     raise RuntimeError(f"result audit failed: {message}")
 
 
-def main() -> None:
-    args = parse_args()
-    if not args.result.is_file():
-        fail(f"missing result: {args.result}")
-    payload = json.loads(args.result.read_text(encoding="utf-8"))
+def audit_payload(payload: dict, classes: int, validation_images: int) -> float:
+    """Validate a result payload and return its audited best Top-1."""
     required = {
         "best_top1", "training_target", "num_classes", "validation_images",
         "primary_metric", "native_top1_at_best_checkpoint", "per_class",
@@ -32,10 +29,10 @@ def main() -> None:
         fail(f"unexpected training target: {payload['training_target']}")
     if payload["primary_metric"] != "native_top1":
         fail(f"unexpected primary metric: {payload['primary_metric']}")
-    if payload["num_classes"] != args.classes:
-        fail(f"num_classes={payload['num_classes']} != {args.classes}")
-    if payload["validation_images"] != args.validation_images:
-        fail(f"validation_images={payload['validation_images']} != {args.validation_images}")
+    if payload["num_classes"] != classes:
+        fail(f"num_classes={payload['num_classes']} != {classes}")
+    if payload["validation_images"] != validation_images:
+        fail(f"validation_images={payload['validation_images']} != {validation_images}")
 
     best = float(payload["best_top1"])
     native = float(payload["native_top1_at_best_checkpoint"])
@@ -45,8 +42,8 @@ def main() -> None:
         fail(f"best_top1={best} differs from reloaded-checkpoint Top-1={native}")
 
     per_class = payload["per_class"]
-    if not isinstance(per_class, list) or len(per_class) != args.classes:
-        fail(f"per_class length is not {args.classes}")
+    if not isinstance(per_class, list) or len(per_class) != classes:
+        fail(f"per_class length is not {classes}")
     total_images = 0
     total_correct = 0
     for expected_id, row in enumerate(per_class):
@@ -62,11 +59,20 @@ def main() -> None:
             fail(f"incorrect per-class accuracy for class {expected_id}")
         total_images += total
         total_correct += correct
-    if total_images != args.validation_images:
-        fail(f"per-class totals sum to {total_images}, expected {args.validation_images}")
+    if total_images != validation_images:
+        fail(f"per-class totals sum to {total_images}, expected {validation_images}")
     reconstructed = 100.0 * total_correct / total_images
     if not math.isclose(native, reconstructed, rel_tol=0.0, abs_tol=1e-4):
         fail(f"native Top-1={native} differs from per-class reconstruction={reconstructed}")
+    return best
+
+
+def main() -> None:
+    args = parse_args()
+    if not args.result.is_file():
+        fail(f"missing result: {args.result}")
+    payload = json.loads(args.result.read_text(encoding="utf-8"))
+    best = audit_payload(payload, args.classes, args.validation_images)
     print(json.dumps({
         "status": "complete",
         "result": str(args.result.resolve()),
