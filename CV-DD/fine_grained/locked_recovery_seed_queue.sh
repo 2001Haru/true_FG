@@ -13,6 +13,7 @@ TEACHER_DIR="$BASE_EXP_ROOT/diagnostics/historical_intended/teacher/$DATASET/tse
 RESULT_ROOT="$BASE_EXP_ROOT/diagnostics/student_imagenet/results"
 POST_EVAL_ROOT="$BASE_EXP_ROOT/diagnostics/student_imagenet/post_eval"
 WAIT_SECONDS="${WAIT_SECONDS:-300}"
+EVAL_WAIT_FOR_RESULT="${EVAL_WAIT_FOR_RESULT:-}"
 LOG_ROOT="$BASE_EXP_ROOT/diagnostics/student_imagenet/logs/jobs"
 STATUS="$BASE_EXP_ROOT/diagnostics/student_imagenet/status_locked_${DATASET}_r${RECOVERY_SEED}.txt"
 LOCK_ROOT="$BASE_EXP_ROOT/diagnostics/student_imagenet/locks"
@@ -56,6 +57,13 @@ for ipc in 1 3 5; do
         "$DATASET" "$RECOVERY_SEED" "$ipc" \
         > "$LOG_ROOT/relabel_${DATASET}_r${RECOVERY_SEED}_ipc${ipc}.log" 2>&1
 done
+
+if [[ -n "$EVAL_WAIT_FOR_RESULT" ]]; then
+    echo "$(date --iso-8601=seconds) waiting to start evaluations: $EVAL_WAIT_FOR_RESULT" > "$STATUS"
+    while [[ ! -f "$EVAL_WAIT_FOR_RESULT" ]]; do
+        sleep "$WAIT_SECONDS"
+    done
+fi
 
 run_eval() {
     local ipc="$1"
