@@ -15,6 +15,7 @@ PATCH_SEED="${PATCH_SEED:-42}"
 WORKERS="${WORKERS:-4}"
 TEACHER_WORKERS="${TEACHER_WORKERS:-8}"
 RELABEL_WORKERS="${RELABEL_WORKERS:-8}"
+RELABEL_MANIFEST_REQUIRED="${RELABEL_MANIFEST_REQUIRED:-0}"
 EVAL_WORKERS="${EVAL_WORKERS:-8}"
 EVAL_PERSISTENT_WORKERS="${EVAL_PERSISTENT_WORKERS:-1}"
 STUDENT_TEMPERATURE="${STUDENT_TEMPERATURE:-20}"
@@ -152,7 +153,19 @@ case "$STAGE" in
         expected_batches=$((400 * CLASSES * IPC / FKD_BATCH))
         batch_count=0
         [[ -d "$fkd_actual" ]] && batch_count="$(find "$fkd_actual" -type f -name 'batch_*.tar' | wc -l)"
-        if [[ "$batch_count" -ne "$expected_batches" ]]; then
+        relabel_manifest_complete=0
+        if [[ -f "$fkd_actual/relabel_manifest.json" ]] && \
+            python - "$fkd_actual/relabel_manifest.json" <<'PY'
+import json
+import sys
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+raise SystemExit(0 if payload.get("status") == "complete" else 1)
+PY
+        then
+            relabel_manifest_complete=1
+        fi
+        if [[ "$batch_count" -ne "$expected_batches" ]] || \
+            [[ "$RELABEL_MANIFEST_REQUIRED" == 1 && "$relabel_manifest_complete" != 1 ]]; then
             mkdir -p "$(dirname "$fkd_base")"
             python -u "$ROOT_DIR/relabel/relabel.py" \
                 --syn-data-path "$syn" --fkd-path "$fkd_base" \
@@ -164,6 +177,9 @@ case "$STAGE" in
         fi
         batch_count="$(find "$fkd_actual" -type f -name 'batch_*.tar' | wc -l)"
         [[ "$batch_count" -eq "$expected_batches" ]] || fail "FKD batches $batch_count != $expected_batches"
+        if [[ "$RELABEL_MANIFEST_REQUIRED" == 1 ]]; then
+            require_file "$fkd_actual/relabel_manifest.json"
+        fi
         python "$ROOT_DIR/fine_grained/audit_fkd.py" \
             --fkd-dir "$fkd_actual" --images $((CLASSES * IPC)) \
             --classes "$CLASSES" --batch-size "$FKD_BATCH" --epochs 400

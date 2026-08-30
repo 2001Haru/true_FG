@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import os
 import random
@@ -25,6 +26,45 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 import recover.utils_recover as ure
+
+
+def sha256(path):
+    digest = hashlib.sha256()
+    with open(path, 'rb') as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def write_relabel_manifest(args, ipc, status):
+    teacher_path = os.path.join(args.model_pool_dir, args.teacher_model_name + '.pth')
+    payload = {
+        'status': status,
+        'dataset_name': args.dataset_name,
+        'ipc': ipc,
+        'synthetic_data_path': os.path.abspath(args.syn_data_path),
+        'fkd_path': os.path.abspath(args.fkd_path),
+        'teacher_path': os.path.abspath(teacher_path),
+        'teacher_sha256': sha256(teacher_path),
+        'teacher_mode': ('eval' if args.eval_mode == 'T' else 'train'),
+        'epochs': args.epochs,
+        'batch_size': args.batch_size,
+        'workers': args.workers,
+        'persistent_workers': bool(args.persistent_workers),
+        'prefetch_factor': args.prefetch_factor,
+        'seed': args.seed,
+        'fkd_seed': args.fkd_seed,
+        'temperature': args.marginalize_temperature,
+        'temperature_role': 'post-eval softmax and optional hierarchy marginalization',
+        'mix_type': args.mix_type,
+        'cutmix_alpha': args.cutmix,
+        'use_fp16': bool(args.use_fp16),
+    }
+    output = os.path.join(args.fkd_path, 'relabel_manifest.json')
+    temporary = output + '.tmp'
+    with open(temporary, 'w', encoding='utf-8') as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True)
+    os.replace(temporary, output)
 
 parser = argparse.ArgumentParser(description='FKD Soft Label Generation w/ Mix Augmentation')
 parser.add_argument('--syn-data-path', required=True, type=str,
@@ -186,6 +226,7 @@ def main():
     args.fkd_path = args.fkd_path + f'_bs{args.batch_size}_ipc{ipc}'
     if not os.path.exists(args.fkd_path):
         os.makedirs(args.fkd_path, exist_ok=True)
+    write_relabel_manifest(args, ipc, 'running')
     
     if args.seed is not None:
         random.seed(args.seed)
@@ -219,6 +260,7 @@ def main():
     else:
         # Simply call main_worker function
         main_worker(args.gpu, ngpus_per_node, args)
+    write_relabel_manifest(args, ipc, 'complete')
 
 
 def main_worker(gpu, ngpus_per_node, args):
