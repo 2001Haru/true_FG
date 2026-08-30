@@ -22,12 +22,14 @@ def command_output(command):
 def main():
     parser = argparse.ArgumentParser("Capture the SRe2L++ reproduction runtime")
     parser.add_argument("--repo-root", required=True, type=Path)
+    parser.add_argument("--node-label", required=True)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     repo_root = args.repo_root.resolve()
 
     payload = {
         "status": "complete",
+        "node_label": args.node_label,
         "platform": platform.platform(),
         "python": sys.version,
         "packages": {

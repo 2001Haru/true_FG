@@ -23,7 +23,12 @@ python "$ROOT_DIR/fine_grained/audit_fd2_release_inventory.py" \
     --repo-root "$(dirname "$ROOT_DIR")" \
     --output "$OUTPUT_DIR/fd2_release_inventory.json"
 python "$ROOT_DIR/fine_grained/capture_runtime_environment.py" \
-    --repo-root "$ROOT_DIR" --output "$OUTPUT_DIR/runtime_environment.json"
+    --repo-root "$ROOT_DIR" --node-label a100_80gb \
+    --output "$OUTPUT_DIR/runtime_environment_80gb.json"
+python "$ROOT_DIR/fine_grained/merge_runtime_environments.py" \
+    --node-40gb "$OUTPUT_DIR/runtime_environment_40gb.json" \
+    --node-80gb "$OUTPUT_DIR/runtime_environment_80gb.json" \
+    --output "$OUTPUT_DIR/runtime_environment.json"
 python "$ROOT_DIR/fine_grained/build_reproduction_report.py" \
     --summary-dir "$OUTPUT_DIR" --output "$OUTPUT_DIR/reproduction_report.md"
 
