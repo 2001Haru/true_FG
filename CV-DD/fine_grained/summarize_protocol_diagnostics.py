@@ -70,6 +70,20 @@ ARMS = (
 )
 
 
+OPTIONAL_ARMS = (
+    {
+        "dataset": "CUB_imsize224",
+        "label": "intended teacher + ImageNet student with reset BN, T20",
+        "path": "diagnostics/student_imagenet_reset_bn/results/CUB_imsize224/rseed41/ipc1_sseed42.json",
+    },
+    {
+        "dataset": "SC_imsize224",
+        "label": "intended teacher + ImageNet student with reset BN, T20",
+        "path": "diagnostics/student_imagenet_reset_bn/results/SC_imsize224/rseed41/ipc1_sseed42.json",
+    },
+)
+
+
 COMPARISONS = (
     {
         "dataset": "A_imsize224",
@@ -116,6 +130,26 @@ COMPARISONS = (
 )
 
 
+OPTIONAL_COMPARISONS = tuple(
+    comparison
+    for dataset_name in ("CUB_imsize224", "SC_imsize224")
+    for comparison in (
+        {
+            "dataset": dataset_name,
+            "intervention": "load ImageNet convolutional weights but reset BN state",
+            "baseline": "intended teacher + random student, T20",
+            "candidate": "intended teacher + ImageNet student with reset BN, T20",
+        },
+        {
+            "dataset": dataset_name,
+            "intervention": "retain ImageNet BN state in addition to convolutional weights",
+            "baseline": "intended teacher + ImageNet student with reset BN, T20",
+            "candidate": "intended teacher + ImageNet student, T20",
+        },
+    )
+)
+
+
 def main():
     parser = argparse.ArgumentParser("Summarize locked protocol diagnostics")
     parser.add_argument(
@@ -128,7 +162,11 @@ def main():
 
     arms = []
     by_identity = {}
-    for spec in ARMS:
+    arm_specs = list(ARMS)
+    arm_specs.extend(
+        spec for spec in OPTIONAL_ARMS if (args.base_root / spec["path"]).is_file()
+    )
+    for spec in arm_specs:
         path = args.base_root / spec["path"]
         if not path.is_file():
             raise RuntimeError(f"missing protocol diagnostic: {path}")
@@ -149,7 +187,13 @@ def main():
         by_identity[(spec["dataset"], spec["label"])] = record
 
     comparisons = []
-    for spec in COMPARISONS:
+    comparison_specs = list(COMPARISONS)
+    comparison_specs.extend(
+        spec for spec in OPTIONAL_COMPARISONS
+        if (spec["dataset"], spec["candidate"]) in by_identity
+        and (spec["dataset"], spec["baseline"]) in by_identity
+    )
+    for spec in comparison_specs:
         baseline = by_identity[(spec["dataset"], spec["baseline"])]
         candidate = by_identity[(spec["dataset"], spec["candidate"])]
         comparisons.append({
