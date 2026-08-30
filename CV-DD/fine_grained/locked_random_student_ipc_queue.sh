@@ -36,6 +36,7 @@ export STUDENT_ADAMW_WEIGHT_DECAY=1e-5
 export STUDENT_ETA=2
 export STUDENT_TEMPERATURE=20
 export EVAL_WORKERS="${EVAL_WORKERS:-8}"
+export EVAL_PERSISTENT_WORKERS="${EVAL_PERSISTENT_WORKERS:-1}"
 
 status="$STATUS_ROOT/${DATASET}_r41_ipc${IPC}.txt"
 echo "$(date --iso-8601=seconds) fair SRe2L++ random-student IPC queue started" > "$status"

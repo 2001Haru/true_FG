@@ -15,6 +15,7 @@ PATCH_SEED="${PATCH_SEED:-42}"
 WORKERS="${WORKERS:-4}"
 RELABEL_WORKERS="${RELABEL_WORKERS:-2}"
 EVAL_WORKERS="${EVAL_WORKERS:-2}"
+EVAL_PERSISTENT_WORKERS="${EVAL_PERSISTENT_WORKERS:-0}"
 STUDENT_TEMPERATURE="${STUDENT_TEMPERATURE:-20}"
 STUDENT_INITIALIZATION="${STUDENT_INITIALIZATION:-random}"
 STUDENT_ADAMW_LR="${STUDENT_ADAMW_LR:-1e-3}"
@@ -185,6 +186,10 @@ case "$STAGE" in
             echo "Evaluation already complete: $result"
             exit 0
         fi
+        persistent_workers_arg=()
+        if [[ "$EVAL_PERSISTENT_WORKERS" == 1 ]]; then
+            persistent_workers_arg+=(--persistent-workers)
+        fi
         python -u "$ROOT_DIR/validate/train_fkd.py" \
             --model ResNet18 --ipc "$IPC" \
             --exp-name "sre2l_${DATASET}_ipc${IPC}_rseed${RUN_SEED}_sseed${STUDENT_SEED}" \
@@ -192,6 +197,7 @@ case "$STAGE" in
             --output-dir "$POST_EVAL_ROOT" --batch-size "$FKD_BATCH" --epochs 400 \
             --dataset-name "$DATASET" --gradient-accumulation-steps "$ACCUMULATION" \
             --mix-type cutmix --cos --workers "$EVAL_WORKERS" --fkd_seed 42 \
+            "${persistent_workers_arg[@]}" \
             --train-seed "$STUDENT_SEED" --temperature "$STUDENT_TEMPERATURE" \
             --student-initialization "$STUDENT_INITIALIZATION" \
             --adamw-lr-override "$STUDENT_ADAMW_LR" \
