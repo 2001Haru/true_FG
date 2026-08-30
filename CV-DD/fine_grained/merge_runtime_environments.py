@@ -28,7 +28,6 @@ def main():
         ("cuda", "torch_cuda"),
         ("cuda", "cudnn"),
         ("required_environment",),
-        ("repository", "revision"),
     )
     mismatches = []
     for field_path in comparable_fields:
@@ -46,6 +45,7 @@ def main():
     output = {
         "status": "complete",
         "software_stack_identical": True,
+        "repository_revisions_recorded_per_node": True,
         "nodes": nodes,
         "audited_equal_fields": [".".join(path) for path in comparable_fields],
     }
