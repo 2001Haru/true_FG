@@ -15,12 +15,20 @@ POST_EVAL_ROOT="$BASE_EXP_ROOT/diagnostics/student_imagenet/post_eval"
 WAIT_SECONDS="${WAIT_SECONDS:-300}"
 LOG_ROOT="$BASE_EXP_ROOT/diagnostics/student_imagenet/logs/jobs"
 STATUS="$BASE_EXP_ROOT/diagnostics/student_imagenet/status_locked_${DATASET}_r${RECOVERY_SEED}.txt"
-mkdir -p "$LOG_ROOT"
+LOCK_ROOT="$BASE_EXP_ROOT/diagnostics/student_imagenet/locks"
+mkdir -p "$LOG_ROOT" "$LOCK_ROOT"
 
 while [[ ! -f "$WAIT_FOR_RESULT" ]]; do
     echo "$(date --iso-8601=seconds) waiting for prerequisite: $WAIT_FOR_RESULT"
     sleep "$WAIT_SECONDS"
 done
+
+command -v flock >/dev/null 2>&1 || { echo "flock is required" >&2; exit 1; }
+exec 8>"$LOCK_ROOT/recovery_${DATASET}_r${RECOVERY_SEED}.lock"
+flock -n 8 || {
+    echo "recovery-seed queue already running: $DATASET r$RECOVERY_SEED" >&2
+    exit 1
+}
 
 export EXP_ROOT="$PIPELINE_ROOT"
 export PREPARED_DATA_ROOT="$BASE_EXP_ROOT/datasets"
