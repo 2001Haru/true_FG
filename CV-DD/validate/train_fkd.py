@@ -56,6 +56,17 @@ if not getattr(_MapDatasetFetcher.fetch, "_cvdd_fkd_patch", False):
     _MapDatasetFetcher.fetch = _cvdd_fkd_map_dataset_fetch
 
 
+def load_pretrained_without_bn(model, state_dict):
+    """Match FD2 models.utils_models.load_state_dicts(..., pretrained_bn=False)."""
+    bn_keys = set()
+    for module_name, module in model.named_modules():
+        if isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
+            for suffix in ('weight', 'bias', 'running_mean', 'running_var'):
+                bn_keys.add(f'{module_name}.{suffix}' if module_name else suffix)
+    filtered = {key: value for key, value in state_dict.items() if key not in bn_keys}
+    model.load_state_dict(filtered, strict=False)
+
+
 def get_args():
     parser = argparse.ArgumentParser("FKD Training on Cifar-100")
     parser.add_argument('--exp-name', type=str,
@@ -104,7 +115,8 @@ def get_args():
                         help='override the dataset/model-specific cosine eta')
     parser.add_argument('--model', type=str,
                         default='ResNet18', help='student model name')
-    parser.add_argument('--student-initialization', choices=['random', 'imagenet-v1'],
+    parser.add_argument('--student-initialization',
+                        choices=['random', 'imagenet-v1', 'imagenet-v1-reset-bn'],
                         default='random', help='student weight initialization')
     parser.add_argument('--keep-topk', type=int, default=1000,
                         help='keep topk logits for kd loss')
@@ -421,6 +433,10 @@ def main():
             weights = (models.ResNet18_Weights.IMAGENET1K_V1
                        if args.student_initialization == 'imagenet-v1' else None)
             model = models.resnet18(weights=weights)
+            if args.student_initialization == 'imagenet-v1-reset-bn':
+                load_pretrained_without_bn(
+                    model, models.ResNet18_Weights.IMAGENET1K_V1.get_state_dict()
+                )
             if args.ncls != 1000:
                 model.fc = nn.Linear(model.fc.in_features, args.ncls)
     elif args.model == 'ResNet50':
@@ -432,6 +448,10 @@ def main():
             weights = (models.ResNet50_Weights.IMAGENET1K_V1
                        if args.student_initialization == 'imagenet-v1' else None)
             model = models.resnet50(weights=weights)
+            if args.student_initialization == 'imagenet-v1-reset-bn':
+                load_pretrained_without_bn(
+                    model, models.ResNet50_Weights.IMAGENET1K_V1.get_state_dict()
+                )
             if args.ncls != 1000:
                 model.fc = nn.Linear(model.fc.in_features, args.ncls)
     elif args.model == 'ResNet101':
@@ -443,6 +463,10 @@ def main():
             weights = (models.ResNet101_Weights.IMAGENET1K_V1
                        if args.student_initialization == 'imagenet-v1' else None)
             model = models.resnet101(weights=weights)
+            if args.student_initialization == 'imagenet-v1-reset-bn':
+                load_pretrained_without_bn(
+                    model, models.ResNet101_Weights.IMAGENET1K_V1.get_state_dict()
+                )
             if args.ncls != 1000:
                 model.fc = nn.Linear(model.fc.in_features, args.ncls)
     else:
