@@ -13,6 +13,9 @@ IPCS = (1, 3, 5)
 STUDENT_SEEDS = (42, 43, 44)
 RECOVERY_SEED = 41
 RESULT_RE = re.compile(r"ipc(?P<ipc>[135])_sseed(?P<seed>\d+)\.json$")
+FINAL_TEST_RE = re.compile(
+    r"TEST Iter 399:.*Top-1 err = (?P<error>[0-9]+(?:\.[0-9]+)?)"
+)
 
 
 def finite_top1(value, label):
@@ -32,12 +35,35 @@ def stats(values):
     }
 
 
+def final_top1_from_log(log_root, dataset_name, ipc, student_seed):
+    """Recover the final metric for runs produced before it was added to JSON."""
+    dataset_aliases = (dataset_name, dataset_name.split("_", 1)[0])
+    candidates = [
+        log_root / f"eval_{alias}_r{RECOVERY_SEED}_ipc{ipc}_s{student_seed}.log"
+        for alias in dataset_aliases
+    ]
+    for path in candidates:
+        if not path.is_file():
+            continue
+        matches = list(FINAL_TEST_RE.finditer(path.read_text(encoding="utf-8", errors="replace")))
+        if matches:
+            error = finite_top1(matches[-1].group("error"), f"final Top-1 error in {path}")
+            return 100.0 - error, str(path.resolve())
+    return None, None
+
+
 def main():
     parser = argparse.ArgumentParser("Summarize the locked intended SRe2L++ protocol")
     parser.add_argument(
         "--result-root",
         type=Path,
         default=Path("/linxi/dataset/FG_SRe2L_repro/v1/diagnostics/student_imagenet/results"),
+    )
+    parser.add_argument(
+        "--log-root",
+        type=Path,
+        default=Path("/linxi/dataset/FG_SRe2L_repro/v1/diagnostics/student_imagenet/logs/jobs"),
+        help="training logs used to recover final-epoch accuracy for legacy result JSONs",
     )
     parser.add_argument("--output-dir", required=True, type=Path)
     args = parser.parse_args()
@@ -66,6 +92,11 @@ def main():
                     raise RuntimeError(f"Unexpected student initialization in {path}")
                 best = finite_top1(payload["best_top1"], f"best_top1 in {path}")
                 final = payload.get("final_epoch_top1")
+                final_source = "result_json" if final is not None else None
+                if final is None:
+                    final, final_source = final_top1_from_log(
+                        args.log_root, dataset_name, ipc, student_seed
+                    )
                 if final is not None:
                     final = finite_top1(final, f"final_epoch_top1 in {path}")
                 runs.append({
@@ -75,6 +106,7 @@ def main():
                     "student_seed": student_seed,
                     "best_top1": best,
                     "final_epoch_top1": final,
+                    "final_epoch_source": final_source,
                     "target": DATASETS[dataset_name].paper_targets[ipc_index],
                     "path": str(path.resolve()),
                 })
