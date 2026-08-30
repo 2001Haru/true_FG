@@ -90,7 +90,7 @@ def get_args():
     parser.add_argument('--start-epoch', type=int,
                         default=0, help='start epoch')
     parser.add_argument('--epochs', type=int, default=300, help='total epoch')
-    parser.add_argument('-j', '--workers', default=2, type=int,
+    parser.add_argument('-j', '--workers', default=8, type=int,
                         help='number of data loading workers')
     parser.add_argument('--persistent-workers', action='store_true',
                         help='reuse DataLoader workers across epochs (off matches released CV-DD)')
