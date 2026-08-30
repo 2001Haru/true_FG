@@ -753,6 +753,8 @@ def export_per_class_accuracy(model, args, best_acc1):
         'learning_rate': (args.lr if args.sgd else args.adamw_lr),
         'weight_decay': args.adamw_weight_decay,
         'cosine_eta': args.eta,
+        'dataloader_workers': args.workers,
+        'persistent_workers': bool(args.persistent_workers),
         'num_classes': output_classes,
         'validation_dir': os.path.abspath(args.val_dir),
         'validation_images': len(args.val_loader.dataset),
