@@ -58,6 +58,10 @@ def main():
         "- Relabel/evaluation: FKD T20, CutMix, AdamW 1e-3/1e-5, eta=2, 400 epochs.",
         "- Student: torchvision ResNet18 ImageNet-1K V1 initialization. This is an intentional "
         "protocol reconstruction; the released random-student path does not reproduce the paper scale.",
+        "- Historical-source caveat: the deleted plain-teacher trainer/launcher blob IDs and the "
+        "13-commit audit are retained in the frozen release audit and teacher manifests, but those "
+        "two deleted Git objects are no longer present in the current object database. The current "
+        "teacher checkpoint, gates, recovery trees, and FKD artifacts remain directly hash-verifiable.",
         "",
         "## Main rseed41 × three student seeds",
         "",
