@@ -34,6 +34,11 @@ ARMS = (
     },
     {
         "dataset": "A_imsize224",
+        "label": "intended teacher + ImageNet student with reset BN, T20",
+        "path": "diagnostics/student_imagenet_reset_bn/results/A_imsize224/rseed41/ipc1_sseed42.json",
+    },
+    {
+        "dataset": "A_imsize224",
         "label": "intended teacher + ImageNet student, T20",
         "path": "diagnostics/student_imagenet/results/A_imsize224/rseed41/ipc1_sseed42.json",
     },
@@ -77,6 +82,18 @@ COMPARISONS = (
         "intervention": "enable intended ImageNet teacher initialization",
         "baseline": "code-faithful random teacher + random student, T20",
         "candidate": "intended teacher + random student, T20",
+    },
+    {
+        "dataset": "A_imsize224",
+        "intervention": "load ImageNet convolutional weights but reset BN state",
+        "baseline": "intended teacher + random student, T20",
+        "candidate": "intended teacher + ImageNet student with reset BN, T20",
+    },
+    {
+        "dataset": "A_imsize224",
+        "intervention": "retain ImageNet BN state in addition to convolutional weights",
+        "baseline": "intended teacher + ImageNet student with reset BN, T20",
+        "candidate": "intended teacher + ImageNet student, T20",
     },
     {
         "dataset": "A_imsize224",
