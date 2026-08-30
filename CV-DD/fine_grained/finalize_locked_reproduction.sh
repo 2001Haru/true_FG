@@ -19,6 +19,9 @@ python "$ROOT_DIR/fine_grained/summarize_seed_variance.py" \
     --output-dir "$OUTPUT_DIR"
 python "$ROOT_DIR/fine_grained/summarize_protocol_diagnostics.py" \
     --base-root "$BASE_EXP_ROOT" --output-dir "$OUTPUT_DIR"
+python "$ROOT_DIR/fine_grained/audit_fd2_release_inventory.py" \
+    --repo-root "$(dirname "$ROOT_DIR")" \
+    --output "$OUTPUT_DIR/fd2_release_inventory.json"
 
 git_revision="$(git -C "$ROOT_DIR" rev-parse HEAD)"
 python - "$OUTPUT_DIR" "$git_revision" <<'PY'
@@ -35,6 +38,7 @@ inputs = {
     "locked_results": output_dir / "locked_results.json",
     "seed_variance_results": output_dir / "seed_variance_results.json",
     "protocol_diagnostics": output_dir / "protocol_diagnostics.json",
+    "fd2_release_inventory": output_dir / "fd2_release_inventory.json",
 }
 payloads = {name: json.loads(path.read_text(encoding="utf-8")) for name, path in inputs.items()}
 statuses = {name: payload["status"] for name, payload in payloads.items()}
