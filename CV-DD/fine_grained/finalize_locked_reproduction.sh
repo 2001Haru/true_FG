@@ -6,6 +6,9 @@ BASE_EXP_ROOT="${BASE_EXP_ROOT:-/linxi/dataset/FG_SRe2L_repro/v1}"
 RESULT_ROOT="${RESULT_ROOT:-$BASE_EXP_ROOT/diagnostics/student_imagenet/results}"
 LOG_ROOT="${LOG_ROOT:-$BASE_EXP_ROOT/diagnostics/student_imagenet/logs/jobs}"
 OUTPUT_DIR="${OUTPUT_DIR:-$BASE_EXP_ROOT/diagnostics/student_imagenet/summary}"
+export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION="${PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION:-python}"
+export TORCH_HOME="${TORCH_HOME:-/linxi/dataset/FD2/torch_cache}"
+export LD_PRELOAD="${LD_PRELOAD:-/usr/lib/x86_64-linux-gnu/libstdc++.so.6}"
 mkdir -p "$OUTPUT_DIR"
 
 python "$ROOT_DIR/fine_grained/audit_protocol_provenance.py" \
