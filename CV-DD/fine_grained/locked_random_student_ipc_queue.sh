@@ -8,10 +8,10 @@ IPC="${2:?missing IPC}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BASE_EXP_ROOT="${BASE_EXP_ROOT:-/linxi/dataset/FG_SRe2L_repro/v1}"
 PIPELINE_ROOT="$BASE_EXP_ROOT/diagnostics/historical_intended/pipeline"
-RANDOM_ROOT="$BASE_EXP_ROOT/diagnostics/student_random_fd2"
-LOG_ROOT="$RANDOM_ROOT/logs/jobs"
-STATUS_ROOT="$RANDOM_ROOT/status"
-LOCK_ROOT="$RANDOM_ROOT/locks"
+FAIR_ROOT="$BASE_EXP_ROOT/diagnostics/student_random_sre2l_fd2"
+LOG_ROOT="$FAIR_ROOT/logs/jobs"
+STATUS_ROOT="$FAIR_ROOT/status"
+LOCK_ROOT="$FAIR_ROOT/locks"
 mkdir -p "$LOG_ROOT" "$STATUS_ROOT" "$LOCK_ROOT"
 
 case "$DATASET" in
@@ -28,16 +28,16 @@ export PREPARED_DATA_ROOT="$BASE_EXP_ROOT/datasets"
 export TEACHER_DIR_OVERRIDE="$BASE_EXP_ROOT/diagnostics/historical_intended/teacher/$DATASET/tseed42"
 export TEACHER_SEED=42
 export PATCH_SEED=42
-export RESULT_ROOT="$RANDOM_ROOT/results"
-export POST_EVAL_ROOT="$RANDOM_ROOT/post_eval"
+export RESULT_ROOT="$FAIR_ROOT/results"
+export POST_EVAL_ROOT="$FAIR_ROOT/post_eval"
 export STUDENT_INITIALIZATION=random
-export STUDENT_ADAMW_LR=1e-2
+export STUDENT_ADAMW_LR=1e-3
 export STUDENT_ADAMW_WEIGHT_DECAY=1e-5
 export STUDENT_ETA=2
 export STUDENT_TEMPERATURE=20
 
 status="$STATUS_ROOT/${DATASET}_r41_ipc${IPC}.txt"
-echo "$(date --iso-8601=seconds) random-student IPC queue started" > "$status"
+echo "$(date --iso-8601=seconds) fair SRe2L++ random-student IPC queue started" > "$status"
 
 run_seed() {
     local seed="$1"
@@ -59,8 +59,8 @@ done
 set -e
 
 if (( failures != 0 )); then
-    echo "$(date --iso-8601=seconds) random-student IPC queue failed: $failures seed jobs" > "$status"
+    echo "$(date --iso-8601=seconds) fair SRe2L++ random-student IPC queue failed: $failures seed jobs" > "$status"
     exit 1
 fi
 
-echo "$(date --iso-8601=seconds) random-student IPC queue complete" > "$status"
+echo "$(date --iso-8601=seconds) fair SRe2L++ random-student IPC queue complete" > "$status"
