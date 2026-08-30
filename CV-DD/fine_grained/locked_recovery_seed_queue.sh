@@ -41,14 +41,49 @@ bash "$ROOT_DIR/fine_grained/run_sre2l_fg.sh" sample \
 
 # Student seed 42 is fixed here. Combined with the rseed41 × sseed42/43/44
 # matrix, this isolates recovery variation without an unnecessary full 3×3
-# recovery/student seed factorial.
+# recovery/student seed factorial. Generate all FKD streams before evaluation
+# so two independent IPC evaluations can share the selected A100.
 for ipc in 1 3 5; do
     bash "$ROOT_DIR/fine_grained/run_sre2l_fg.sh" relabel \
         "$DATASET" "$RECOVERY_SEED" "$ipc" \
         > "$LOG_ROOT/relabel_${DATASET}_r${RECOVERY_SEED}_ipc${ipc}.log" 2>&1
+done
+
+run_eval() {
+    local ipc="$1"
     bash "$ROOT_DIR/fine_grained/run_sre2l_fg.sh" eval \
         "$DATASET" "$RECOVERY_SEED" "$ipc" 42 \
         > "$LOG_ROOT/eval_${DATASET}_r${RECOVERY_SEED}_ipc${ipc}_s42.log" 2>&1
-done
+}
+
+run_eval 1 &
+pid1=$!
+run_eval 3 &
+pid3=$!
+
+set +e
+wait "$pid1"
+status1=$?
+set -e
+if (( status1 != 0 )); then
+    echo "IPC1 evaluation failed with status $status1" > "$STATUS"
+    wait "$pid3" || true
+    exit "$status1"
+fi
+
+run_eval 5 &
+pid5=$!
+
+set +e
+wait "$pid3"
+status3=$?
+wait "$pid5"
+status5=$?
+set -e
+if (( status3 != 0 || status5 != 0 )); then
+    echo "evaluation failure: IPC3=$status3 IPC5=$status5" > "$STATUS"
+    (( status3 != 0 )) && exit "$status3"
+    exit "$status5"
+fi
 
 echo "$(date --iso-8601=seconds) recovery-seed queue complete" > "$STATUS"
