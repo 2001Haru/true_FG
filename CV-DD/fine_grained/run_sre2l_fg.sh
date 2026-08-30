@@ -17,6 +17,9 @@ RELABEL_WORKERS="${RELABEL_WORKERS:-2}"
 EVAL_WORKERS="${EVAL_WORKERS:-2}"
 STUDENT_TEMPERATURE="${STUDENT_TEMPERATURE:-20}"
 STUDENT_INITIALIZATION="${STUDENT_INITIALIZATION:-random}"
+STUDENT_ADAMW_LR="${STUDENT_ADAMW_LR:-1e-3}"
+STUDENT_ADAMW_WEIGHT_DECAY="${STUDENT_ADAMW_WEIGHT_DECAY:-1e-5}"
+STUDENT_ETA="${STUDENT_ETA:-2}"
 RESULT_ROOT="${RESULT_ROOT:-$EXP_ROOT/results}"
 POST_EVAL_ROOT="${POST_EVAL_ROOT:-$EXP_ROOT/post_eval}"
 
@@ -191,7 +194,9 @@ case "$STAGE" in
             --mix-type cutmix --cos --workers "$EVAL_WORKERS" --fkd_seed 42 \
             --train-seed "$STUDENT_SEED" --temperature "$STUDENT_TEMPERATURE" \
             --student-initialization "$STUDENT_INITIALIZATION" \
-            --adamw-lr-override 1e-3 --adamw-weight-decay 1e-5 --eta-override 2 \
+            --adamw-lr-override "$STUDENT_ADAMW_LR" \
+            --adamw-weight-decay "$STUDENT_ADAMW_WEIGHT_DECAY" \
+            --eta-override "$STUDENT_ETA" \
             --val-dir "$DATA_DIR/test" --disable-wandb --per-class-output "$result"
         python "$ROOT_DIR/fine_grained/audit_result.py" \
             --result "$result" --classes "$CLASSES" --validation-images "$VAL_IMAGES"
@@ -220,7 +225,9 @@ case "$STAGE" in
             --batch-size "$FKD_BATCH" --epochs 400 --dataset-name "$DATASET" \
             --gradient-accumulation-steps "$ACCUMULATION" --cos \
             --workers "$EVAL_WORKERS" --train-seed "$STUDENT_SEED" \
-            --adamw-lr-override 1e-3 --adamw-weight-decay 1e-5 --eta-override 2 \
+            --adamw-lr-override "$STUDENT_ADAMW_LR" \
+            --adamw-weight-decay "$STUDENT_ADAMW_WEIGHT_DECAY" \
+            --eta-override "$STUDENT_ETA" \
             --val-dir "$DATA_DIR/test" --disable-wandb --per-class-output "$result"
         python "$ROOT_DIR/fine_grained/audit_result.py" \
             --result "$result" --classes "$CLASSES" --validation-images "$VAL_IMAGES"

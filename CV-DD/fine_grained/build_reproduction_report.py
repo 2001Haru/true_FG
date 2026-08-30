@@ -43,12 +43,13 @@ def main():
     status = "complete" if all(value == "complete" for value in required_statuses.values()) else "incomplete"
 
     lines = [
-        "# SRe²L++ fine-grained reproduction report",
+        "# ImageNet-student SRe²L++ fine-grained upper-bound report",
         "",
         f"**Status: {status}.**",
         "",
-        "This report targets the FD² ResNet18 SRe²L++ baseline on CUB-200-2011, "
-        "FGVC-Aircraft, and Stanford Cars at IPC 1/3/5.",
+        "This report documents a pretrained-student diagnostic upper bound on CUB-200-2011, "
+        "FGVC-Aircraft, and Stanford Cars at IPC 1/3/5. It is not the fair FD²/CV-DD/FADRM "
+        "baseline because those validation paths initialize the downstream student randomly.",
         "",
         "## Locked protocol",
         "",
@@ -57,14 +58,15 @@ def main():
         "- Recovery: IPC5 first, 2×2 patch initialization, dataset-specific 10k/4k iterations, "
         "then byte-identical IPC1/3 subsets.",
         "- Relabel/evaluation: FKD T20, CutMix, AdamW 1e-3/1e-5, eta=2, 400 epochs.",
-        "- Student: torchvision ResNet18 ImageNet-1K V1 initialization. This is an intentional "
-        "protocol reconstruction; the released random-student path does not reproduce the paper scale.",
+        "- Student: torchvision ResNet18 ImageNet-1K V1 initialization. This arm is retained only "
+        "as an explicitly labeled upper bound; the fair baseline uses random initialization, AdamW "
+        "1e-2/1e-5, eta=2, and the same 400-epoch FKD stream.",
         "- Historical-source caveat: the deleted plain-teacher trainer/launcher blob IDs and the "
         "13-commit audit are retained in the frozen release audit and teacher manifests, but those "
         "two deleted Git objects are no longer present in the current object database. The current "
         "teacher checkpoint, gates, recovery trees, and FKD artifacts remain directly hash-verifiable.",
         "",
-        "## Main rseed41 × three student seeds",
+        "## Pretrained-student rseed41 × three student seeds",
         "",
         "| Dataset | IPC | FD² target | Best mean ± sd | Final mean ± sd | Closest gap | Runs |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
@@ -142,6 +144,12 @@ def main():
             "The report remains incomplete because one or more required matrices or provenance "
             "audits have not finished. No final reproduction claim is made at this stage.",
         ])
+    lines.extend([
+        "",
+        "Regardless of evidence completion for this diagnostic arm, these results must not be "
+        "reported as the fair SRe²L++ baseline or compared directly with randomly initialized "
+        "CV-DD/FADRM/FD² downstream students.",
+    ])
 
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("\n".join(lines) + "\n", encoding="utf-8")
