@@ -30,6 +30,7 @@ def main():
         "diagnostics": summary_dir / "protocol_diagnostics.json",
         "provenance": summary_dir / "protocol_provenance.json",
         "release": summary_dir / "fd2_release_inventory.json",
+        "runtime": summary_dir / "runtime_environment.json",
     }
     for name, path in paths.items():
         if not path.is_file():
@@ -37,7 +38,7 @@ def main():
     evidence = {name: read_json(path) for name, path in paths.items()}
     required_statuses = {
         name: evidence[name]["status"]
-        for name in ("locked", "seeds", "diagnostics", "provenance", "release")
+        for name in ("locked", "seeds", "diagnostics", "provenance", "release", "runtime")
     }
     status = "complete" if all(value == "complete" for value in required_statuses.values()) else "incomplete"
 

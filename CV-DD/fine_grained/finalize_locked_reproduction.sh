@@ -22,6 +22,8 @@ python "$ROOT_DIR/fine_grained/summarize_protocol_diagnostics.py" \
 python "$ROOT_DIR/fine_grained/audit_fd2_release_inventory.py" \
     --repo-root "$(dirname "$ROOT_DIR")" \
     --output "$OUTPUT_DIR/fd2_release_inventory.json"
+python "$ROOT_DIR/fine_grained/capture_runtime_environment.py" \
+    --repo-root "$ROOT_DIR" --output "$OUTPUT_DIR/runtime_environment.json"
 python "$ROOT_DIR/fine_grained/build_reproduction_report.py" \
     --summary-dir "$OUTPUT_DIR" --output "$OUTPUT_DIR/reproduction_report.md"
 
@@ -42,6 +44,7 @@ inputs = {
     "seed_variance_results": output_dir / "seed_variance_results.json",
     "protocol_diagnostics": output_dir / "protocol_diagnostics.json",
     "fd2_release_inventory": output_dir / "fd2_release_inventory.json",
+    "runtime_environment": output_dir / "runtime_environment.json",
 }
 payloads = {name: json.loads(path.read_text(encoding="utf-8")) for name, path in inputs.items()}
 statuses = {name: payload["status"] for name, payload in payloads.items()}
