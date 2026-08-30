@@ -108,6 +108,33 @@
     "fd2_aircraft_ipc1_target": 52.6,
     "conclusion": "The ImageNet-initialized student's final-epoch result matches the paper target, while the released random initialization misses by 35.5 points. This is the locked intended-behavior protocol pending multi-seed and cross-dataset confirmation."
   },
+  "locked_protocol_results": {
+    "protocol": "Intended ImageNet-V1 teacher and student; historical teacher optimizer/schedule; released recovery/FKD/post-eval settings.",
+    "recovery_seed": 41,
+    "student_seeds": [42, 43, 44],
+    "Aircraft_imsize224": {
+      "ipc1_best_mean_sample_std": [55.61556155615562, 1.4471070460817257],
+      "ipc1_final_mean_sample_std": [50.39503966666667, 3.811365800559732],
+      "ipc1_target": 52.6,
+      "ipc3_final_mean_sample_std": [67.356736, 0.675567364933362],
+      "ipc3_target": 66.6,
+      "ipc5_final_mean_sample_std": [71.88718899999999, 0.31752190634348265],
+      "ipc5_target": 68.3,
+      "status": "all IPC1/3/5 student seeds complete; paper targets are within the observed range or within 3.6 points of the mean"
+    },
+    "CUB_imsize224_ipc1": {
+      "best_mean_sample_std": [57.96801285441404, 0.35427007257945786],
+      "final_mean_sample_std": [57.306408999999995, 0.4263878711842048],
+      "target": 53.4,
+      "status": "three student seeds complete"
+    },
+    "SC_imsize224_ipc1_seed42": {
+      "best": 62.91506031588111,
+      "final": 62.467355,
+      "target": 52.4,
+      "status": "additional student seeds running"
+    }
+  },
   "patch_initialization_equivalence": {
     "reference": "FD2/RDED_patch.py at official commit 08006ec088b3e1bda25facda7835a5d174e169f0",
     "implementation": "CV-DD/fine_grained/make_patches.py",
