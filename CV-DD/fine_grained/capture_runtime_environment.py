@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -26,6 +27,21 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     repo_root = args.repo_root.resolve()
+    nvidia_smi = command_output([
+        "nvidia-smi",
+        "--query-gpu=index,name,memory.total,driver_version",
+        "--format=csv,noheader",
+    ])
+    expected_memory = {"a100_40gb": 40960, "a100_80gb": 81920}
+    if args.node_label not in expected_memory:
+        raise RuntimeError(f"unsupported node label: {args.node_label}")
+    memory_values = [int(value) for value in re.findall(r",\s*(\d+)\s+MiB,", nvidia_smi)]
+    if len(memory_values) != 2 or any(
+        abs(value - expected_memory[args.node_label]) > 1024 for value in memory_values
+    ):
+        raise RuntimeError(
+            f"node label {args.node_label} does not match GPU memory: {memory_values}"
+        )
 
     payload = {
         "status": "complete",
@@ -41,11 +57,8 @@ def main():
         "cuda": {
             "torch_cuda": torch.version.cuda,
             "cudnn": torch.backends.cudnn.version(),
-            "nvidia_smi": command_output([
-                "nvidia-smi",
-                "--query-gpu=index,name,memory.total,driver_version",
-                "--format=csv,noheader",
-            ]),
+            "nvidia_smi": nvidia_smi,
+            "memory_mib": memory_values,
         },
         "required_environment": {
             name: os.environ.get(name)
