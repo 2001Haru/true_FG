@@ -173,6 +173,9 @@ case "$STAGE" in
         require_file "$fkd_actual/fkd_audit.json"
         result="$RESULT_ROOT/$DATASET/rseed${RUN_SEED}/ipc${IPC}_sseed${STUDENT_SEED}.json"
         mkdir -p "$(dirname "$result")"
+        command -v flock >/dev/null 2>&1 || fail "flock is required for collision-safe evaluation"
+        exec 9>"${result}.lock"
+        flock -n 9 || fail "Evaluation already running for result: $result"
         if [[ -f "$result" ]]; then
             python "$ROOT_DIR/fine_grained/audit_result.py" \
                 --result "$result" --classes "$CLASSES" --validation-images "$VAL_IMAGES"
@@ -201,6 +204,9 @@ case "$STAGE" in
         require_dir "$syn"
         result="$RESULT_ROOT/$DATASET/rseed${RUN_SEED}/ipc${IPC}_sseed${STUDENT_SEED}.json"
         mkdir -p "$(dirname "$result")"
+        command -v flock >/dev/null 2>&1 || fail "flock is required for collision-safe evaluation"
+        exec 9>"${result}.lock"
+        flock -n 9 || fail "Hard-label evaluation already running for result: $result"
         if [[ -f "$result" ]]; then
             python "$ROOT_DIR/fine_grained/audit_result.py" \
                 --result "$result" --classes "$CLASSES" --validation-images "$VAL_IMAGES"
