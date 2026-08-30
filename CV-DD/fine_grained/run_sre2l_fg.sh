@@ -13,7 +13,8 @@ EXP_ROOT="${EXP_ROOT:-/linxi/dataset/FG_SRe2L_repro/v1}"
 TEACHER_SEED="${TEACHER_SEED:-42}"
 PATCH_SEED="${PATCH_SEED:-42}"
 WORKERS="${WORKERS:-4}"
-RELABEL_WORKERS="${RELABEL_WORKERS:-2}"
+TEACHER_WORKERS="${TEACHER_WORKERS:-8}"
+RELABEL_WORKERS="${RELABEL_WORKERS:-8}"
 EVAL_WORKERS="${EVAL_WORKERS:-8}"
 EVAL_PERSISTENT_WORKERS="${EVAL_PERSISTENT_WORKERS:-1}"
 STUDENT_TEMPERATURE="${STUDENT_TEMPERATURE:-20}"
@@ -76,6 +77,7 @@ case "$STAGE" in
             --dataset-name "$DATASET" --data-dir "$DATA_DIR" \
             --output-dir "$EXP_ROOT/teachers/$DATASET/tseed${RUN_SEED}" \
             --seed "$RUN_SEED" --epochs 100 --batch-size 32 \
+            --workers "$TEACHER_WORKERS" \
             --lr 1e-2 --momentum 0.9 --weight-decay 1e-4 --eta-min 1e-5 \
             --initialization imagenet-v1 --skip-completed
         ;;

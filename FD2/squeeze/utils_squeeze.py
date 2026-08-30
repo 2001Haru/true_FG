@@ -63,12 +63,13 @@ def load_dataset(rank, args, mode="train"):
     worker_init_fun = partial(worker_init, base_seed=args.base_seed, rank=rank)
 
     # load train dataset
+    workers = getattr(args, "workers", 2)
     trainloader = torch.utils.data.DataLoader(
-        train_set, batch_size=args.batch_size, sampler=train_sampler, shuffle=(train_sampler is None), num_workers=2,
+        train_set, batch_size=args.batch_size, sampler=train_sampler, shuffle=(train_sampler is None), num_workers=workers,
         worker_init_fn=worker_init_fun, pin_memory=True, drop_last=False)
 
     # load test dataset
-    testloader = torch.utils.data.DataLoader(test_set, batch_size=32, shuffle=False, num_workers=2, pin_memory=True)
+    testloader = torch.utils.data.DataLoader(test_set, batch_size=32, shuffle=False, num_workers=workers, pin_memory=True)
 
     return trainloader, testloader
 

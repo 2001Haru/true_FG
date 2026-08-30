@@ -55,6 +55,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--lr", type=float, default=1e-2)
     parser.add_argument("--momentum", type=float, default=0.9)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
@@ -123,6 +124,9 @@ def main() -> None:
         "pretrained_bn_flag": True,
         "epochs": args.epochs,
         "batch_size": args.batch_size,
+        "dataloader_workers": args.workers,
+        "persistent_workers": False,
+        "prefetch_factor": 2,
         "optimizer": "SGD",
         "lr": args.lr,
         "momentum": args.momentum,
