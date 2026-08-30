@@ -17,6 +17,8 @@ python "$ROOT_DIR/fine_grained/summarize_locked_protocol.py" \
 python "$ROOT_DIR/fine_grained/summarize_seed_variance.py" \
     --result-root "$RESULT_ROOT" --log-root "$LOG_ROOT" \
     --output-dir "$OUTPUT_DIR"
+python "$ROOT_DIR/fine_grained/summarize_protocol_diagnostics.py" \
+    --base-root "$BASE_EXP_ROOT" --output-dir "$OUTPUT_DIR"
 
 git_revision="$(git -C "$ROOT_DIR" rev-parse HEAD)"
 python - "$OUTPUT_DIR" "$git_revision" <<'PY'
@@ -32,6 +34,7 @@ inputs = {
     "protocol_provenance": output_dir / "protocol_provenance.json",
     "locked_results": output_dir / "locked_results.json",
     "seed_variance_results": output_dir / "seed_variance_results.json",
+    "protocol_diagnostics": output_dir / "protocol_diagnostics.json",
 }
 payloads = {name: json.loads(path.read_text(encoding="utf-8")) for name, path in inputs.items()}
 statuses = {name: payload["status"] for name, payload in payloads.items()}
