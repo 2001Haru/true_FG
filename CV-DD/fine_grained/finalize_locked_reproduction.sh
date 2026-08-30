@@ -22,6 +22,8 @@ python "$ROOT_DIR/fine_grained/summarize_protocol_diagnostics.py" \
 python "$ROOT_DIR/fine_grained/audit_fd2_release_inventory.py" \
     --repo-root "$(dirname "$ROOT_DIR")" \
     --output "$OUTPUT_DIR/fd2_release_inventory.json"
+python "$ROOT_DIR/fine_grained/build_reproduction_report.py" \
+    --summary-dir "$OUTPUT_DIR" --output "$OUTPUT_DIR/reproduction_report.md"
 
 git_revision="$(git -C "$ROOT_DIR" rev-parse HEAD)"
 python - "$OUTPUT_DIR" "$git_revision" <<'PY'
@@ -52,6 +54,12 @@ for name, path in inputs.items():
         "bytes": path.stat().st_size,
         "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
     }
+report_path = output_dir / "reproduction_report.md"
+artifacts["reproduction_report"] = {
+    "path": str(report_path.resolve()),
+    "bytes": report_path.stat().st_size,
+    "sha256": hashlib.sha256(report_path.read_bytes()).hexdigest(),
+}
 
 completion = {
     "status": "complete",
