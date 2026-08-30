@@ -35,6 +35,16 @@ def stats(values):
     }
 
 
+def target_stats(values, target):
+    summary = stats(values)
+    summary.update({
+        "mean_minus_target": statistics.mean(values) - target if values else None,
+        "closest_absolute_gap": min((abs(value - target) for value in values), default=None),
+        "target_within_range": min(values) <= target <= max(values) if values else None,
+    })
+    return summary
+
+
 def final_top1_from_log(log_root, dataset_name, ipc, student_seed):
     """Recover the final metric for runs produced before it was added to JSON."""
     dataset_aliases = (dataset_name, dataset_name.split("_", 1)[0])
@@ -122,8 +132,8 @@ def main():
                 "dataset": dataset_name,
                 "ipc": ipc,
                 "target": target,
-                "best": {**stats(best_values), "mean_minus_target": statistics.mean(best_values) - target if best_values else None},
-                "final": {**stats(final_values), "mean_minus_target": statistics.mean(final_values) - target if final_values else None},
+                "best": target_stats(best_values, target),
+                "final": target_stats(final_values, target),
                 "student_seeds": sorted(run["student_seed"] for run in group),
             })
 
@@ -146,17 +156,26 @@ def main():
     lines = [
         "# Locked intended SRe2L++ results",
         "",
-        "| Dataset | IPC | FD2 target | Best mean ± sd | Final mean ± sd | Runs |",
-        "| --- | ---: | ---: | ---: | ---: | ---: |",
+        "| Dataset | IPC | FD2 target | Best mean ± sd (delta) | Final mean ± sd (delta) | Closest gap | Runs |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for group in groups:
         best = group["best"]
         final = group["final"]
         best_text = "—" if best["count"] == 0 else f"{best['mean']:.2f} ± {best['sample_std']:.2f}" if best["sample_std"] is not None else f"{best['mean']:.2f}"
         final_text = "—" if final["count"] == 0 else f"{final['mean']:.2f} ± {final['sample_std']:.2f}" if final["sample_std"] is not None else f"{final['mean']:.2f}"
+        if best["count"]:
+            best_text += f" ({best['mean_minus_target']:+.2f})"
+        if final["count"]:
+            final_text += f" ({final['mean_minus_target']:+.2f})"
+        gaps = [
+            gap for gap in (best["closest_absolute_gap"], final["closest_absolute_gap"])
+            if gap is not None
+        ]
+        closest_text = "—" if not gaps else f"{min(gaps):.2f}"
         lines.append(
             f"| {group['dataset']} | {group['ipc']} | {group['target']:.1f} | "
-            f"{best_text} | {final_text} | {best['count']}/3 |"
+            f"{best_text} | {final_text} | {closest_text} | {best['count']}/3 |"
         )
     (args.output_dir / "locked_results.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(json.dumps({"status": payload["status"], "completed_runs": len(runs), "expected_runs": 27}))
