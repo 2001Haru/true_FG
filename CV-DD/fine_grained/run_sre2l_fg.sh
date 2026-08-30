@@ -72,12 +72,12 @@ case "$STAGE" in
         ;;
 
     teacher)
-        python -u "$ROOT_DIR/fine_grained/train_plain_teacher.py" \
+        python -u "$ROOT_DIR/fine_grained/train_historical_plain_teacher.py" \
             --dataset-name "$DATASET" --data-dir "$DATA_DIR" \
             --output-dir "$EXP_ROOT/teachers/$DATASET/tseed${RUN_SEED}" \
-            --seed "$RUN_SEED" --epochs 51 --batch-size 4 --workers "$WORKERS" \
-            --lr 1e-3 --momentum 0.9 --weight-decay 1e-5 \
-            --deterministic --resume --skip-completed
+            --seed "$RUN_SEED" --epochs 100 --batch-size 32 \
+            --lr 1e-2 --momentum 0.9 --weight-decay 1e-4 --eta-min 1e-5 \
+            --initialization imagenet-v1 --skip-completed
         ;;
 
     patches)
