@@ -77,6 +77,7 @@ run_batch "$p5" "$p6"
 python "$ROOT_DIR/fine_grained/summarize_cub_iteration_sensitivity.py" \
     --sensitivity-root "$SENSITIVITY_ROOT" --standard-root "$STANDARD_ROOT" \
     > "$LOG_ROOT/summary_3_student_seeds.log" 2>&1
+rm -f "$STATUS_ROOT/extra_students.running"
 echo "$(date --iso-8601=seconds) extra Student seeds complete" \
     > "$STATUS_ROOT/extra_students.complete"
 trap - EXIT
