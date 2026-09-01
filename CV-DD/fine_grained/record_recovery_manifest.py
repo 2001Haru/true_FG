@@ -40,6 +40,7 @@ def main() -> None:
     parser = argparse.ArgumentParser("Write an auditable SRe2L++ recovery manifest")
     parser.add_argument("--dataset-name", required=True)
     parser.add_argument("--recovery-seed", required=True, type=int)
+    parser.add_argument("--iterations", required=True, type=int)
     parser.add_argument("--teacher", required=True, type=Path)
     parser.add_argument("--teacher-gate", required=True, type=Path)
     parser.add_argument("--patch-dir", required=True, type=Path)
@@ -86,7 +87,7 @@ def main() -> None:
             "optimizer": "Adam",
             "betas": [0.5, 0.9],
             "image_lr": 1e-3,
-            "iterations": cfg.recovery_iterations,
+            "iterations": args.iterations,
             "r_bn": 1e-3,
             "first_bn_multiplier": 10.0,
             "jitter": 32,

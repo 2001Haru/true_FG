@@ -35,13 +35,14 @@ case "$DATASET" in
         DATASET=SC_imsize224; CLASSES=196; VAL_IMAGES=8041; RECOVERY_ITERATIONS=4000; FKD_BATCH=14; ACCUMULATION=2 ;;
     *) echo "Unsupported dataset: $DATASET" >&2; exit 2 ;;
 esac
+RECOVERY_ITERATIONS="${RECOVERY_ITERATIONS_OVERRIDE:-$RECOVERY_ITERATIONS}"
 
 SOURCE_DATA_DIR="$DATA_ROOT/$DATASET"
 PREPARED_DATA_ROOT="${PREPARED_DATA_ROOT:-$EXP_ROOT/datasets}"
 DATA_DIR="$PREPARED_DATA_ROOT/$DATASET"
 TEACHER_DIR="${TEACHER_DIR_OVERRIDE:-$EXP_ROOT/teachers/$DATASET/tseed${TEACHER_SEED}}"
 TEACHER="$TEACHER_DIR/ResNet18.pth"
-PATCH_BASE="$EXP_ROOT/patches/$DATASET/tseed${TEACHER_SEED}_pseed${PATCH_SEED}"
+PATCH_BASE="${PATCH_BASE_OVERRIDE:-$EXP_ROOT/patches/$DATASET/tseed${TEACHER_SEED}_pseed${PATCH_SEED}}"
 PATCH_DIR="$PATCH_BASE/2"
 RECOVERY_ROOT="$EXP_ROOT/recovery/$DATASET/rseed${RUN_SEED}"
 SYN_IPC5="$RECOVERY_ROOT/ipc5"
@@ -104,6 +105,7 @@ case "$STAGE" in
         RECOVERY_MANIFEST="$RECOVERY_ROOT/recovery_manifest.json"
         python "$ROOT_DIR/fine_grained/record_recovery_manifest.py" \
             --dataset-name "$DATASET" --recovery-seed "$RUN_SEED" \
+            --iterations "$RECOVERY_ITERATIONS" \
             --teacher "$TEACHER" --teacher-gate "$TEACHER_GATE" \
             --patch-dir "$PATCH_DIR" --patch-manifest "$PATCH_MANIFEST" \
             --output "$RECOVERY_MANIFEST" --status running
@@ -120,6 +122,7 @@ case "$STAGE" in
         [[ "$count" -eq $((CLASSES * 5)) ]] || fail "IPC5 count $count != $((CLASSES * 5))"
         python "$ROOT_DIR/fine_grained/record_recovery_manifest.py" \
             --dataset-name "$DATASET" --recovery-seed "$RUN_SEED" \
+            --iterations "$RECOVERY_ITERATIONS" \
             --teacher "$TEACHER" --teacher-gate "$TEACHER_GATE" \
             --patch-dir "$PATCH_DIR" --patch-manifest "$PATCH_MANIFEST" \
             --output "$RECOVERY_MANIFEST" --status complete
