@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import json
 import math
+import statistics
 from pathlib import Path
 
 from audit_result import audit_payload
@@ -57,16 +58,8 @@ def main() -> None:
     for ipc in (1, 3, 5):
         fkd_dir = (sensitivity / "pipeline/fkd/CUB_imsize224/rseed42" /
                    f"ipc{ipc}_bs20_ipc{ipc}")
-        result_path = sensitivity / "results/CUB_imsize224/rseed42" / f"ipc{ipc}_sseed42.json"
-        baseline_path = (standard / "results/tseed42/CUB_imsize224/rseed42" /
-                         f"ipc{ipc}_sseed42.json")
-        if not result_path.is_file():
-            missing.append(str(result_path))
-            continue
         relabel = load_json(fkd_dir / "relabel_manifest.json")
         fkd = load_json(fkd_dir / "fkd_audit.json")
-        result = load_json(result_path)
-        baseline = load_json(baseline_path)
         expect(relabel["status"], "complete", "Relabel status")
         expect(relabel["ipc"], ipc, "Relabel IPC")
         expect(relabel["teacher_sha256"], teacher_hash, "Relabel Teacher hash")
@@ -74,47 +67,70 @@ def main() -> None:
         expect(relabel["persistent_workers"], False, "Relabel persistent")
         expect(fkd["status"], "complete", "FKD status")
         expect(fkd["images"], 200 * ipc, "FKD images")
-        sensitivity_best = audit_payload(result, 200, 5794)
-        baseline_best = audit_payload(baseline, 200, 5794)
-        for label, payload in (("sensitivity", result), ("baseline", baseline)):
-            expect(payload["student_initialization"], "random", f"{label} initialization")
-            expect(payload["student_seed"], 42, f"{label} Student seed")
-            expect(payload["epochs"], 400, f"{label} epochs")
-            expect(payload["batch_size"], 20, f"{label} batch")
-            expect(payload["gradient_accumulation_steps"], 2, f"{label} accumulation")
-            expect_float(payload["temperature"], 20.0, f"{label} temperature")
-            expect(payload["optimizer"], "adamw", f"{label} optimizer")
-            expect_float(payload["learning_rate"], 1e-3, f"{label} LR")
-            expect_float(payload["weight_decay"], 1e-5, f"{label} weight decay")
-            expect_float(payload["cosine_eta"], 2.0, f"{label} eta")
-            expect(payload["dataloader_workers"], 8, f"{label} workers")
-            expect(payload["persistent_workers"], True, f"{label} persistent")
-        rows.append({
+        for student_seed in (42, 43, 44):
+            result_path = (sensitivity / "results/CUB_imsize224/rseed42" /
+                           f"ipc{ipc}_sseed{student_seed}.json")
+            baseline_path = (standard / "results/tseed42/CUB_imsize224/rseed42" /
+                             f"ipc{ipc}_sseed{student_seed}.json")
+            if not result_path.is_file():
+                missing.append(str(result_path))
+                continue
+            result = load_json(result_path)
+            baseline = load_json(baseline_path)
+            sensitivity_best = audit_payload(result, 200, 5794)
+            baseline_best = audit_payload(baseline, 200, 5794)
+            for label, payload in (("sensitivity", result), ("baseline", baseline)):
+                expect(payload["student_initialization"], "random", f"{label} initialization")
+                expect(payload["student_seed"], student_seed, f"{label} Student seed")
+                expect(payload["epochs"], 400, f"{label} epochs")
+                expect(payload["batch_size"], 20, f"{label} batch")
+                expect(payload["gradient_accumulation_steps"], 2, f"{label} accumulation")
+                expect_float(payload["temperature"], 20.0, f"{label} temperature")
+                expect(payload["optimizer"], "adamw", f"{label} optimizer")
+                expect_float(payload["learning_rate"], 1e-3, f"{label} LR")
+                expect_float(payload["weight_decay"], 1e-5, f"{label} weight decay")
+                expect_float(payload["cosine_eta"], 2.0, f"{label} eta")
+                expect(payload["dataloader_workers"], 8, f"{label} workers")
+                expect(payload["persistent_workers"], True, f"{label} persistent")
+            rows.append({
+                "ipc": ipc,
+                "teacher_seed": 42,
+                "recovery_seed": 42,
+                "student_seed": student_seed,
+                "baseline_iterations": 10000,
+                "sensitivity_iterations": 4000,
+                "baseline_best_top1": baseline_best,
+                "sensitivity_best_top1": sensitivity_best,
+                "delta_4k_minus_10k": sensitivity_best - baseline_best,
+                "baseline_result": str(baseline_path.resolve()),
+                "sensitivity_result": str(result_path.resolve()),
+            })
+    groups = []
+    for ipc in (1, 3, 5):
+        values = [row["delta_4k_minus_10k"] for row in rows if row["ipc"] == ipc]
+        groups.append({
             "ipc": ipc,
-            "teacher_seed": 42,
-            "recovery_seed": 42,
-            "student_seed": 42,
-            "baseline_iterations": 10000,
-            "sensitivity_iterations": 4000,
-            "baseline_best_top1": baseline_best,
-            "sensitivity_best_top1": sensitivity_best,
-            "delta_4k_minus_10k": sensitivity_best - baseline_best,
-            "baseline_result": str(baseline_path.resolve()),
-            "sensitivity_result": str(result_path.resolve()),
+            "completed": len(values),
+            "expected": 3,
+            "mean_delta_4k_minus_10k": statistics.mean(values) if values else None,
+            "sample_std_delta_4k_minus_10k": statistics.stdev(values) if len(values) > 1 else None,
+            "minimum_delta": min(values) if values else None,
+            "maximum_delta": max(values) if values else None,
         })
     payload = {
-        "status": "complete" if len(rows) == 3 else "incomplete",
+        "status": "complete" if len(rows) == 9 else "incomplete",
         "experiment": "cub_recovery_iterations_4000_vs_10000",
         "comparison": "paired single-variable sensitivity",
         "teacher_seed": 42,
         "recovery_seed": 42,
-        "student_seed": 42,
+        "student_seeds": [42, 43, 44],
         "teacher_checkpoint": str(teacher.resolve()),
         "teacher_checkpoint_sha256": teacher_hash,
         "standard_root": str(standard),
         "sensitivity_root": str(sensitivity),
         "completed_results": len(rows),
-        "expected_results": 3,
+        "expected_results": 9,
+        "groups": groups,
         "rows": rows,
         "missing": missing,
     }
@@ -124,6 +140,7 @@ def main() -> None:
     print(json.dumps({
         "status": payload["status"],
         "completed_results": len(rows),
+        "expected_results": 9,
         "output": str(output.resolve()),
     }, sort_keys=True))
 
