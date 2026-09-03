@@ -83,8 +83,10 @@ wait_wave() {
 main() {
     # SDXL generation occupies both GPUs, so the two feature-space arms must be
     # serialized even though their outputs and per-result locks are isolated.
-    exec 9>"$GLOBAL_LOCK_ROOT/launcher.lock"
-    flock -n 9 || { echo "Another CoDA feature-space queue is already running" >&2; exit 1; }
+    if [[ "${CODA_EXTERNAL_LOCK_HELD:-0}" != 1 ]]; then
+        exec 9>"$GLOBAL_LOCK_ROOT/launcher.lock"
+        flock -n 9 || { echo "Another CoDA feature-space queue is already running" >&2; exit 1; }
+    fi
     export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
     export TORCH_HOME=/linxi/dataset/FD2/torch_cache
     export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6

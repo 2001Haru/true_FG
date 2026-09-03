@@ -37,7 +37,9 @@ ARM_ROOT="$EXP_ROOT/generation/$DATASET/$DISCOVERY_TAG/ipc${IPC}/gseed${GENERATI
 CONFIG="$ARM_ROOT/generation_config.json"
 CODA_OUTPUT="$EXP_ROOT/work/results/$SPEC/gseed${GENERATION_SEED}/Step-25/IPC-$IPC/DF-1.0-GTP-0.9-gamma-0.05/n_5_s_2"
 SYNTHETIC_DIR="$CODA_OUTPUT/generated_images"
+GENERATION_TRACE="$CODA_OUTPUT/generation_trace.json"
 AUDIT="$ARM_ROOT/generation_audit.json"
+GENERATED_PROVENANCE="$ARM_ROOT/generated_image_provenance.jsonl"
 CLUSTER_AUDIT="$EXP_ROOT/clusters/$DATASET/$DISCOVERY_TAG/ipc${IPC}/cluster_audit.json"
 RESULT_ROOT="${RESULT_ROOT:-$EXP_ROOT/results}"
 POST_ROOT="${POST_EVAL_ROOT:-$EXP_ROOT/post_eval}"
@@ -101,12 +103,19 @@ case "$STAGE" in
             for ((i=0; i<chunks; i++)); do require_file "${guidance_prefix}_${i}"; done
         fi
         count=0
+        provenance_count=0
         [[ -d "$cluster_dir" ]] && count="$(find "$cluster_dir" -maxdepth 1 -type f -name "${IPC}_n_5_s_2_saved_clusters_[0-9]*.pkl" | wc -l)"
-        if [[ "$count" -ne "$chunks" ]]; then run_coda --calcu_cluster; fi
+        [[ -d "$cluster_dir" ]] && provenance_count="$(find "$cluster_dir" -maxdepth 1 -type f -name "${IPC}_n_5_s_2_image_provenance_[0-9]*.jsonl" | wc -l)"
+        if [[ "$count" -ne "$chunks" || "$provenance_count" -ne "$chunks" ]]; then
+            run_coda --calcu_cluster
+        fi
         count="$(find "$cluster_dir" -maxdepth 1 -type f -name "${IPC}_n_5_s_2_saved_clusters_[0-9]*.pkl" | wc -l)"
+        provenance_count="$(find "$cluster_dir" -maxdepth 1 -type f -name "${IPC}_n_5_s_2_image_provenance_[0-9]*.jsonl" | wc -l)"
         [[ "$count" -eq "$chunks" ]] || fail "cluster chunks $count != $chunks"
+        [[ "$provenance_count" -eq "$chunks" ]] || fail "provenance chunks $provenance_count != $chunks"
         python "$ROOT_DIR/CV-DD/fine_grained/audit_coda_clusters.py" \
-            --cluster-dir "$cluster_dir" --classes "$CLASSES" --ipc "$IPC" \
+            --cluster-dir "$cluster_dir" --data-dir "$DATA_DIR" \
+            --classes "$CLASSES" --ipc "$IPC" \
             --feature-space "$FEATURE_ARG" --n-neighbors 5 --min-cluster-size 2 \
             --output "$CLUSTER_AUDIT"
         ;;
@@ -115,9 +124,12 @@ case "$STAGE" in
         for ((i=0; i<chunks; i++)); do require_file "$cluster_dir/${IPC}_n_5_s_2_saved_clusters_${i}.pkl"; done
         count=0
         [[ -d "$SYNTHETIC_DIR" ]] && count="$(find "$SYNTHETIC_DIR" -type f -name '*.png' | wc -l)"
-        if [[ "$count" -ne $((CLASSES * IPC)) ]]; then run_coda --generate_images; fi
+        if [[ "$count" -ne $((CLASSES * IPC)) || ! -f "$GENERATION_TRACE" ]]; then
+            run_coda --generate_images
+        fi
         count="$(find "$SYNTHETIC_DIR" -type f -name '*.png' | wc -l)"
         [[ "$count" -eq $((CLASSES * IPC)) ]] || fail "generated images $count != $((CLASSES * IPC))"
+        require_file "$GENERATION_TRACE"
         ;;
     audit)
         require_dir "$SYNTHETIC_DIR"
@@ -125,6 +137,8 @@ case "$STAGE" in
             --dataset-name "$DATASET" --data-dir "$DATA_DIR" \
             --synthetic-dir "$SYNTHETIC_DIR" --ipc "$IPC" \
             --generation-config "$CONFIG" --cluster-audit "$CLUSTER_AUDIT" \
+            --generation-trace "$GENERATION_TRACE" \
+            --generated-provenance-output "$GENERATED_PROVENANCE" \
             --output "$AUDIT"
         ;;
     eval-hard)

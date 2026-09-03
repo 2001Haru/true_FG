@@ -1,4 +1,5 @@
 import os
+import json
 import torch
 from tqdm import tqdm
 from PIL import Image
@@ -38,6 +39,7 @@ def process_and_save_image(image, target_size, save_path):
 
     except Exception as e:
         print(f"Error processing and saving image: {e}")
+        raise
 
 
 def generate_images_single_gpu(gpu_id, args, clusters_centers, my_assignments, results_dict):
@@ -65,6 +67,7 @@ def generate_images_single_gpu(gpu_id, args, clusters_centers, my_assignments, r
         progress_bar = tqdm(total=total_tasks, desc=f"GPU {gpu_id}", position=gpu_id)
 
         with ThreadPoolExecutor(max_workers=8) as executor:
+            pending_saves = []
             for class_idx, (class_label, sel_class) in enumerate(zip(class_labels, sel_classes)):
 
                 index = sel_classes.index(sel_class)
@@ -120,7 +123,9 @@ def generate_images_single_gpu(gpu_id, args, clusters_centers, my_assignments, r
                                     print(f"!!! WARNING: Final latent contains NaN or Inf after custom pipeline processing!")
 
                                 image = pipeline_output.images[0]
-                                executor.submit(process_and_save_image, image, target_size, save_path)
+                                future = executor.submit(
+                                    process_and_save_image, image, target_size, save_path
+                                )
 
                             else:
                                 # Base generation
@@ -156,9 +161,24 @@ def generate_images_single_gpu(gpu_id, args, clusters_centers, my_assignments, r
                                     f"!!! WARNING: Final latent for plotting still contains NaN or Inf after custom pipeline processing!")
 
                                 image = refiner_output_obj.images[0]
-                                executor.submit(process_and_save_image, image, target_size, save_path)
+                                future = executor.submit(
+                                    process_and_save_image, image, target_size, save_path
+                                )
+
+                    pending_saves.append((future, {
+                        "class_id": class_idx,
+                        "class_folder": sel_class,
+                        "representative_slot": shift,
+                        "prompt": first_class_name,
+                        "gpu_id": gpu_id,
+                        "image_seed": image_seed,
+                        "output_path": os.path.abspath(save_path),
+                    }))
 
                     progress_bar.update(1)
+            for future, record in pending_saves:
+                future.result()
+                results_dict[record["class_id"]].append(record)
         progress_bar.close()
         print(f"GPU {gpu_id} completed all tasks")
 
@@ -225,5 +245,26 @@ def generate_images_multi_gpu(args, clusters_centers):
     failed = [(p.pid, p.exitcode) for p in processes if p.exitcode != 0]
     if failed:
         raise RuntimeError(f"CoDA generation workers failed: {failed}")
+
+    records = []
+    for class_id in range(len(class_labels)):
+        records.extend(list(results_dict[class_id]))
+    records.sort(key=lambda item: (item["class_id"], item["representative_slot"]))
+    trace = {
+        "schema_version": 1,
+        "status": "complete",
+        "feature_space": args.feature_space,
+        "generation_seed": args.seed,
+        "generation_gpu_count": num_gpus,
+        "ipc": args.IPC,
+        "images": records,
+    }
+    trace_path = os.path.join(args.save_dir, "generation_trace.json")
+    temporary = f"{trace_path}.tmp"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        json.dump(trace, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    os.replace(temporary, trace_path)
+    print(f"Generation trace saved to {trace_path}")
 
     # print("All GPU processes completed")

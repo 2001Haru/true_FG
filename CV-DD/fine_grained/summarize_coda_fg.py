@@ -70,7 +70,14 @@ def main() -> None:
                             valid = actual == value
                         if not valid:
                             errors.append(f"{path}: {key}={actual!r}, expected {value!r}")
-                    for key in ("generation_audit_sha256", "generation_config_sha256", "synthetic_tree_sha256"):
+                    for key in (
+                        "generation_audit_sha256",
+                        "generation_config_sha256",
+                        "synthetic_tree_sha256",
+                        "cluster_audit_sha256",
+                        "generation_trace_sha256",
+                        "generated_image_provenance_sha256",
+                    ):
                         if not payload.get(key):
                             errors.append(f"{path}: missing {key}")
                     rows.append(

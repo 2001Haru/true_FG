@@ -2,6 +2,7 @@
 import os
 import argparse
 import copy
+import json
 import pickle
 import math
 
@@ -29,6 +30,20 @@ def save_clusters(data, file_path):
     with open(file_path, "wb") as f:
         pickle.dump(data, f)
     print(f"Clusters centers saved to: {file_path}")
+
+
+def _finite_float(value):
+    value = float(value)
+    return value if math.isfinite(value) else None
+
+
+def save_jsonl(rows, file_path):
+    temporary = f"{file_path}.tmp"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, sort_keys=True) + "\n")
+    os.replace(temporary, file_path)
+    print(f"Per-image clustering provenance saved to: {file_path}")
 
 def get_class_info(args):
     if args.spec in ('cub', 'aircraft', 'cars'):
@@ -134,6 +149,7 @@ def main(args):
         num_chunks = math.ceil(args.nclass / 10)
         for chunk_id in range(args.begin_chunk_id, num_chunks):
             clusters_centers = dict()
+            chunk_image_provenance = []
 
             chunk_file_path = f"{args.features_cache_path}_{chunk_id}"
             with open(chunk_file_path, "rb") as f:
@@ -211,6 +227,7 @@ def main(args):
                 final_clusters_dict = hdbscan_post(args, M, initial_centers, cluster_labels, X_processed, log_file_path, clusterer)
 
                 final_centers_original = []
+                selected_by_index = {}
 
                 if final_clusters_dict:
                     for i, (cluster_id, cluster_info) in enumerate(final_clusters_dict.items()):
@@ -237,6 +254,20 @@ def main(args):
                             path_to_save = original_paths[c][center_local_idx]
 
                         final_centers_original.append(final_center)
+                        if int(center_local_idx) in selected_by_index:
+                            raise RuntimeError(
+                                f"Source image selected for multiple representatives: {path_to_save}"
+                            )
+                        selected_by_index[int(center_local_idx)] = {
+                            'representative_slot': i,
+                            'final_cluster_id': int(cluster_id),
+                            'representative_origin': origin,
+                            'representative_selection': (
+                                'maximum_hdbscan_membership_probability'
+                                if origin == 'hdbscan_initial' else
+                                'nearest_real_image_to_postprocessed_center'
+                            ),
+                        }
 
                         ##########################################################################
                         # Save representative samples as set R.
@@ -253,11 +284,82 @@ def main(args):
 
                     clusters_centers[c] = np.array(final_centers_original)
 
+                outlier_scores = getattr(clusterer, 'outlier_scores_', np.full(X.shape[0], np.nan))
+                for source_index, source_path in enumerate(original_paths[c]):
+                    matching_final_clusters = [
+                        (int(cluster_id), info)
+                        for cluster_id, info in final_clusters_dict.items()
+                        if bool(info['points_mask'][source_index])
+                    ]
+                    if len(matching_final_clusters) > 1:
+                        raise RuntimeError(
+                            f"Source image belongs to multiple final clusters: {source_path}"
+                        )
+                    final_cluster_id = None
+                    final_cluster_origin = None
+                    final_cluster_size = None
+                    if matching_final_clusters:
+                        final_cluster_id, final_info = matching_final_clusters[0]
+                        final_cluster_origin = final_info.get('origin', 'unknown')
+                        final_cluster_size = int(final_info['size'])
+                    selected = selected_by_index.get(source_index)
+                    initial_is_noise = int(cluster_labels[source_index]) == -1
+                    if matching_final_clusters:
+                        disposition = 'retained_final_cluster_member'
+                    elif initial_is_noise:
+                        disposition = 'initial_noise_not_used'
+                    else:
+                        disposition = 'initial_cluster_pruned_or_replaced'
+                    chunk_image_provenance.append({
+                        'schema_version': 1,
+                        'feature_space': args.feature_space,
+                        'class_id': int(c),
+                        'class_folder': sel_classes[c],
+                        'class_prompt': class_id_to_name[sel_classes[c]],
+                        'source_index_within_class': int(source_index),
+                        'source_path': source_path,
+                        'initial_hdbscan_cluster_count': int(M),
+                        'initial_hdbscan_label': int(cluster_labels[source_index]),
+                        'initial_hdbscan_is_noise': initial_is_noise,
+                        'initial_hdbscan_membership_probability': _finite_float(
+                            clusterer.probabilities_[source_index]
+                        ),
+                        'initial_hdbscan_outlier_score': _finite_float(
+                            outlier_scores[source_index]
+                        ),
+                        'final_disposition': disposition,
+                        'final_cluster_id': final_cluster_id,
+                        'final_cluster_origin': final_cluster_origin,
+                        'final_cluster_size': final_cluster_size,
+                        'selected_as_representative': selected is not None,
+                        'representative_slot': (
+                            selected['representative_slot'] if selected else None
+                        ),
+                        'representative_origin': (
+                            selected['representative_origin'] if selected else None
+                        ),
+                        'representative_selection': (
+                            selected['representative_selection'] if selected else None
+                        ),
+                        'generated_image_relative_path': (
+                            f"{sel_classes[c]}/{selected['representative_slot']}.png"
+                            if selected else None
+                        ),
+                    })
+
             base_filename_without_ext, file_ext = os.path.splitext(args.saved_clusters_base_name)
             chunk_filename = f"{base_filename_without_ext}_{chunk_id}{file_ext}"
             chunk_save_path = os.path.join(args.specific_cluster_dir, chunk_filename)
             print(f"[Chunk Mode] Saving centers for chunk {chunk_id} to {chunk_save_path}")
             save_clusters(clusters_centers, chunk_save_path)
+            provenance_base_without_ext, provenance_ext = os.path.splitext(
+                args.image_provenance_base_name
+            )
+            provenance_path = os.path.join(
+                args.specific_cluster_dir,
+                f"{provenance_base_without_ext}_{chunk_id}{provenance_ext}",
+            )
+            save_jsonl(chunk_image_provenance, provenance_path)
 
             del clusters_centers
             del original_features_per_class
@@ -361,6 +463,7 @@ def get_args():
     args.log_file_path = os.path.join(args.plot_dir, "logs_cluster_details", f"IPC{args.IPC}", f"n_{args.n_neighbors}_s_{args.min_cluster_size}.txt")
 
     args.saved_clusters_base_name = f"{args.IPC}_n_{args.n_neighbors}_s_{args.min_cluster_size}_saved_clusters.pkl"
+    args.image_provenance_base_name = f"{args.IPC}_n_{args.n_neighbors}_s_{args.min_cluster_size}_image_provenance.jsonl"
 
     _save_dir = os.path.join(args.program_path, "results", args.spec)
     if args.generation_tag:

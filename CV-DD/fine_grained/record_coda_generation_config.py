@@ -89,6 +89,13 @@ def main() -> None:
         },
         "hdbscan": {"min_cluster_size": 2, "min_samples": 1},
         "postprocess": "paper Algorithm 2; FG outlier threshold requires count >= missing IPC",
+        "per_source_image_cluster_provenance": (
+            "initial HDBSCAN label/noise/probability/outlier score, final disposition, "
+            "representative selection origin and slot"
+        ),
+        "per_generated_image_provenance": (
+            "generated SHA-256 and seed/GPU joined to the exact representative source image"
+        ),
         "generator": "SDXL Base 1.0",
         "model_root": str(args.model_root.resolve()),
         "model_index_sha256": sha256(model_index),

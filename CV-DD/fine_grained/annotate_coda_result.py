@@ -42,6 +42,9 @@ def main() -> None:
         generation_config=str(args.generation_config.resolve()),
         generation_config_sha256=sha256(args.generation_config),
         synthetic_tree_sha256=audit["tree_sha256"],
+        cluster_audit_sha256=audit["cluster_audit_sha256"],
+        generation_trace_sha256=audit["generation_trace_sha256"],
+        generated_image_provenance_sha256=audit["generated_image_provenance_sha256"],
     )
     temporary = args.result.with_suffix(args.result.suffix + ".tmp")
     temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
