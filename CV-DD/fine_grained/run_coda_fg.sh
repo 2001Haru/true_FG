@@ -22,9 +22,10 @@ DATA_ROOT="${DATA_ROOT:-/linxi/dataset/FG_SRe2L_repro/v1/datasets}"
 MODEL_ROOT="${CODA_MODEL_ROOT:-/linxi/models/CoDA/SDXL-Refiner}"
 EXP_ROOT="${CODA_EXP_ROOT:-/linxi/dataset/FG_CoDA_standard/v1}"
 DATA_DIR="$DATA_ROOT/$DATASET"
-ARM_ROOT="$EXP_ROOT/generation/$DATASET/ipc${IPC}/gseed${GENERATION_SEED}"
+DISCOVERY_TAG="n15_mcs2_ms1"
+ARM_ROOT="$EXP_ROOT/generation/$DATASET/$DISCOVERY_TAG/ipc${IPC}/gseed${GENERATION_SEED}"
 CONFIG="$ARM_ROOT/generation_config.json"
-CODA_OUTPUT="$EXP_ROOT/work/results/$SPEC/gseed${GENERATION_SEED}/Step-25/IPC-$IPC/DF-1.0-GTP-0.9-gamma-0.05/n_15_s_5"
+CODA_OUTPUT="$EXP_ROOT/work/results/$SPEC/gseed${GENERATION_SEED}/Step-25/IPC-$IPC/DF-1.0-GTP-0.9-gamma-0.05/n_15_s_2"
 SYNTHETIC_DIR="$CODA_OUTPUT/generated_images"
 AUDIT="$ARM_ROOT/generation_audit.json"
 RESULT_ROOT="${RESULT_ROOT:-$EXP_ROOT/results}"
@@ -50,7 +51,7 @@ run_coda() {
         --local_model_path "$MODEL_ROOT" --spec "$SPEC" --nclass "$CLASSES" \
         --IPC "$IPC" --size 224 --seed "$GENERATION_SEED" \
         --generation_tag "gseed${GENERATION_SEED}" --n_neighbors 15 \
-        --min_cluster_size 5 --min_samples 3 --num_seed_candidates 3 \
+        --min_cluster_size 2 --min_samples 1 --num_seed_candidates 3 \
         --cluster_detial --cluster_logger --sample_step 25 \
         --denoising_factor 1.0 --guideTPercent 0.9 \
         --cfg_guidance_scale 5.0 --CoDA_guidance_scale 0.05 "$@")
@@ -71,13 +72,13 @@ case "$STAGE" in
     cluster)
         for ((i=0; i<chunks; i++)); do require_file "${feature_prefix}_${i}"; done
         count=0
-        [[ -d "$cluster_dir" ]] && count="$(find "$cluster_dir" -maxdepth 1 -type f -name "${IPC}_n_15_s_5_saved_clusters_[0-9]*.pkl" | wc -l)"
+        [[ -d "$cluster_dir" ]] && count="$(find "$cluster_dir" -maxdepth 1 -type f -name "${IPC}_n_15_s_2_saved_clusters_[0-9]*.pkl" | wc -l)"
         if [[ "$count" -ne "$chunks" ]]; then run_coda --calcu_cluster; fi
-        count="$(find "$cluster_dir" -maxdepth 1 -type f -name "${IPC}_n_15_s_5_saved_clusters_[0-9]*.pkl" | wc -l)"
+        count="$(find "$cluster_dir" -maxdepth 1 -type f -name "${IPC}_n_15_s_2_saved_clusters_[0-9]*.pkl" | wc -l)"
         [[ "$count" -eq "$chunks" ]] || fail "cluster chunks $count != $chunks"
         ;;
     generate)
-        for ((i=0; i<chunks; i++)); do require_file "$cluster_dir/${IPC}_n_15_s_5_saved_clusters_${i}.pkl"; done
+        for ((i=0; i<chunks; i++)); do require_file "$cluster_dir/${IPC}_n_15_s_2_saved_clusters_${i}.pkl"; done
         count=0
         [[ -d "$SYNTHETIC_DIR" ]] && count="$(find "$SYNTHETIC_DIR" -type f -name '*.png' | wc -l)"
         if [[ "$count" -ne $((CLASSES * IPC)) ]]; then run_coda --generate_images; fi

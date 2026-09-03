@@ -70,7 +70,14 @@ main() {
     export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
     export TORCH_HOME=/linxi/dataset/FD2/torch_cache
     export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
-    [[ -f "$MODEL_ROOT/sdxl-base/model_index.json" ]] || { echo "missing SDXL base" >&2; exit 1; }
+    for model_file in \
+        "$MODEL_ROOT/sdxl-base/model_index.json" \
+        "$MODEL_ROOT/sdxl-base/unet/diffusion_pytorch_model.fp16.safetensors" \
+        "$MODEL_ROOT/sdxl-base/vae/diffusion_pytorch_model.fp16.safetensors" \
+        "$MODEL_ROOT/sdxl-base/text_encoder/model.fp16.safetensors" \
+        "$MODEL_ROOT/sdxl-base/text_encoder_2/model.fp16.safetensors"; do
+        [[ -f "$model_file" ]] || { echo "missing SDXL base component: $model_file" >&2; exit 1; }
+    done
     for dataset in "${DATASETS[@]}"; do
         [[ -d "$DATA_ROOT/$dataset/train" && -d "$DATA_ROOT/$dataset/test" ]] || {
             echo "missing prepared dataset: $DATA_ROOT/$dataset" >&2; exit 1;

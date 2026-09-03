@@ -38,6 +38,8 @@ def main() -> None:
         args.repo_root / "CoDA" / name
         for name in (
             "CoDA_main.py",
+            "Loadmodel.py",
+            "CoDA_SDXLBasePipeline.py",
             "get_features.py",
             "postprocess.py",
             "generated.py",
@@ -64,7 +66,7 @@ def main() -> None:
             "min_dist": 0.0,
             "random_state": 42,
         },
-        "hdbscan": {"min_cluster_size": 5, "min_samples": 3},
+        "hdbscan": {"min_cluster_size": 2, "min_samples": 1},
         "postprocess": "paper Algorithm 2; FG outlier threshold requires count >= missing IPC",
         "generator": "SDXL Base 1.0",
         "model_root": str(args.model_root.resolve()),
@@ -73,7 +75,9 @@ def main() -> None:
         "inference_steps": 25,
         "denoising_factor": 1.0,
         "guide_t_percent": 0.9,
-        "prior_injection_steps_effective": 2.5,
+        "prior_injection_steps_nominal_formula": 2.5,
+        "prior_injection_steps_discrete": 3,
+        "coda_guided_steps_discrete": 22,
         "cfg_scale": 5.0,
         "coda_guidance_scale_gamma": 0.05,
         "negative_prompt": None,

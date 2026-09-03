@@ -40,6 +40,7 @@ def load_sdxl_and_refiner(args, VAE16_ONLY=False, VAEFIX=False ):
             sdxl_base_path,
             torch_dtype=model_type,
             use_safetensors=True,
+            variant="fp16",
         )
         if VAEFIX:
             print(f"Loading VAE fix from: {sdxl_vae_path}")
@@ -75,7 +76,10 @@ def load_sdxl_and_refiner(args, VAE16_ONLY=False, VAEFIX=False ):
         use_karras_sigmas=True
     )
 
-    if os.path.exists(sdxl_refiner_path) and os.listdir(sdxl_refiner_path):
+    if getattr(args, "denoising_factor", 1.0) == 1.0:
+        print("DF=1.0: SDXL Refiner is not used; skipping its load.")
+        refiner = None
+    elif os.path.exists(sdxl_refiner_path) and os.listdir(sdxl_refiner_path):
         print(f"Loading SDXL refiner from local path: {sdxl_refiner_path}")
         refiner = CoDA_Refiner.from_pretrained(
             sdxl_refiner_path,
@@ -83,6 +87,7 @@ def load_sdxl_and_refiner(args, VAE16_ONLY=False, VAEFIX=False ):
             vae=base_pipeline.vae,
             torch_dtype=model_type,
             use_safetensors=True,
+            variant="fp16",
         )
     else:
         print("Downloading SDXL refiner from Hugging Face...")
@@ -103,8 +108,9 @@ def load_sdxl_and_refiner(args, VAE16_ONLY=False, VAEFIX=False ):
     base_pipeline.vae.eval()
     base_pipeline.text_encoder.eval()
     base_pipeline.text_encoder_2.eval()
-    refiner.unet.eval()
-    refiner.vae.eval()
-    refiner.text_encoder_2.eval()
+    if refiner is not None:
+        refiner.unet.eval()
+        refiner.vae.eval()
+        refiner.text_encoder_2.eval()
 
     return base_pipeline, refiner

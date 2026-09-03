@@ -50,7 +50,8 @@ def generate_images_single_gpu(gpu_id, args, clusters_centers, my_assignments, r
         with suppress_stdout():
             pipeline, refiner = load_sdxl_and_refiner(args)
         pipeline.to(device)
-        refiner.to(device)
+        if refiner is not None:
+            refiner.to(device)
 
         batch_size = 1
         class_labels = args._class_labels

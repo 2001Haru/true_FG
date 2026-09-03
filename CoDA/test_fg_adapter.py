@@ -47,8 +47,8 @@ class FineGrainedCoDATest(unittest.TestCase):
             args = SimpleNamespace(
                 spec="cars",
                 IPC=5,
-                min_cluster_size=5,
-                min_samples=3,
+                min_cluster_size=2,
+                min_samples=1,
                 num_seed_candidates=3,
                 cluster_detial=False,
                 cluster_logger=False,
