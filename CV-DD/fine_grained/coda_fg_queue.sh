@@ -10,6 +10,7 @@ STATUS_ROOT="$EXP_ROOT/status"
 LOCK_ROOT="$EXP_ROOT/locks"
 DATASETS=(CUB_imsize224 A_imsize224 SC_imsize224)
 IPCS=(1 3 5)
+GENERATION_SEEDS=(0 1 2)
 STUDENT_SEEDS=(42 43 44)
 EVAL_WAVE_SIZE="${EVAL_WAVE_SIZE:-8}"
 mkdir -p "$LOG_ROOT" "$STATUS_ROOT" "$LOCK_ROOT" "$EXP_ROOT/summary"
@@ -23,14 +24,14 @@ write_definition() {
 import json, os, sys
 from pathlib import Path
 root=Path(sys.argv[1]); revision=sys.argv[2]; wave=int(sys.argv[3])
-expected=[str((root/'results'/d/f'ipc{i}_gseed0_sseed{s}.json').resolve())
+expected=[str((root/'results'/d/f'ipc{i}_gseed{g}_sseed{s}.json').resolve())
           for d in ('CUB_imsize224','A_imsize224','SC_imsize224')
-          for i in (1,3,5) for s in (42,43,44)]
+          for i in (1,3,5) for g in (0,1,2) for s in (42,43,44)]
 payload={
     'status':'running','method':'CoDA','supervision':'hard_label_cross_entropy',
     'git_revision':revision,'datasets':['CUB_imsize224','A_imsize224','SC_imsize224'],
-    'ipcs':[1,3,5],'generation_seed':0,'student_seeds':[42,43,44],
-    'expected_generated_sets':9,'expected_results':27,
+    'ipcs':[1,3,5],'generation_seeds':[0,1,2],'student_seeds':[42,43,44],
+    'expected_generated_sets':27,'expected_results':81,
     'eval_wave_size':wave,'max_eval_concurrency_per_gpu':4,
     'model_root':'/linxi/models/CoDA/SDXL-Refiner',
     'expected_result_files':expected,
@@ -41,19 +42,20 @@ PY
 }
 
 run_stage() {
-    local stage="$1" dataset="$2" ipc="$3"
-    mkdir -p "$LOG_ROOT/$dataset/ipc${ipc}"
+    local stage="$1" dataset="$2" ipc="$3" generation_seed="$4"
+    mkdir -p "$LOG_ROOT/$dataset/ipc${ipc}/gseed${generation_seed}"
     CODA_EXP_ROOT="$EXP_ROOT" DATA_ROOT="$DATA_ROOT" CODA_MODEL_ROOT="$MODEL_ROOT" \
-        bash "$ROOT_DIR/CV-DD/fine_grained/run_coda_fg.sh" "$stage" "$dataset" "$ipc" \
-        > "$LOG_ROOT/$dataset/ipc${ipc}/${stage}.log" 2>&1
+        bash "$ROOT_DIR/CV-DD/fine_grained/run_coda_fg.sh" \
+        "$stage" "$dataset" "$ipc" "$generation_seed" \
+        > "$LOG_ROOT/$dataset/ipc${ipc}/gseed${generation_seed}/${stage}.log" 2>&1
 }
 
 run_eval() {
-    local dataset="$1" ipc="$2" seed="$3" gpu="$4"
+    local dataset="$1" ipc="$2" generation_seed="$3" student_seed="$4" gpu="$5"
     CUDA_VISIBLE_DEVICES="$gpu" CODA_EXP_ROOT="$EXP_ROOT" DATA_ROOT="$DATA_ROOT" \
         CODA_MODEL_ROOT="$MODEL_ROOT" bash "$ROOT_DIR/CV-DD/fine_grained/run_coda_fg.sh" \
-        eval-hard "$dataset" "$ipc" "$seed" \
-        > "$LOG_ROOT/$dataset/ipc${ipc}/eval_sseed${seed}.log" 2>&1
+        eval-hard "$dataset" "$ipc" "$generation_seed" "$student_seed" \
+        > "$LOG_ROOT/$dataset/ipc${ipc}/gseed${generation_seed}/eval_sseed${student_seed}.log" 2>&1
 }
 
 wait_wave() {
@@ -77,29 +79,33 @@ main() {
     write_definition
     echo "$(timestamp) generation started" > "$STATUS_ROOT/generation.running"
     for dataset in "${DATASETS[@]}"; do
-        run_stage features "$dataset" 1
+        run_stage features "$dataset" 1 0
         for ipc in "${IPCS[@]}"; do
-            run_stage cluster "$dataset" "$ipc"
-            run_stage generate "$dataset" "$ipc"
-            run_stage audit "$dataset" "$ipc"
+            run_stage cluster "$dataset" "$ipc" 0
+            for generation_seed in "${GENERATION_SEEDS[@]}"; do
+                run_stage generate "$dataset" "$ipc" "$generation_seed"
+                run_stage audit "$dataset" "$ipc" "$generation_seed"
+            done
         done
     done
     rm -f "$STATUS_ROOT/generation.running"
     echo "$(timestamp) generation complete" > "$STATUS_ROOT/generation.complete"
 
     echo "$(timestamp) evaluation started" > "$STATUS_ROOT/evaluation.running"
-    local task_index=0 pids=() dataset ipc seed gpu
+    local task_index=0 pids=() dataset ipc generation_seed student_seed gpu
     for dataset in "${DATASETS[@]}"; do
         for ipc in "${IPCS[@]}"; do
-            for seed in "${STUDENT_SEEDS[@]}"; do
-                gpu=$((task_index % 2))
-                run_eval "$dataset" "$ipc" "$seed" "$gpu" &
-                pids+=("$!")
-                task_index=$((task_index + 1))
-                if (( ${#pids[@]} == EVAL_WAVE_SIZE )); then
-                    wait_wave "${pids[@]}"
-                    pids=()
-                fi
+            for generation_seed in "${GENERATION_SEEDS[@]}"; do
+                for student_seed in "${STUDENT_SEEDS[@]}"; do
+                    gpu=$((task_index % 2))
+                    run_eval "$dataset" "$ipc" "$generation_seed" "$student_seed" "$gpu" &
+                    pids+=("$!")
+                    task_index=$((task_index + 1))
+                    if (( ${#pids[@]} == EVAL_WAVE_SIZE )); then
+                        wait_wave "${pids[@]}"
+                        pids=()
+                    fi
+                done
             done
         done
     done

@@ -19,7 +19,7 @@ import hdbscan
 from get_features import calculate_features_multiprocess
 from postprocess import _inner_print, hdbscan_post
 from generated import  generate_images_multi_gpu
-from fg_prompts import prompts_for_classes
+from fg_prompts import effective_umap_dimensions, prompts_for_classes
 
 import warnings
 warnings.filterwarnings("ignore", module='sklearn')
@@ -155,7 +155,11 @@ def main(args):
                 ##########################################################################
                 # preprocess with UMAP
                 ##########################################################################
-                umap_reducer = UMAP(n_components=50, n_neighbors=args.n_neighbors, min_dist=0.0,random_state=42)
+                umap_dimensions = (
+                    effective_umap_dimensions(X.shape[0])
+                    if args.spec in ('cub', 'aircraft', 'cars') else 50
+                )
+                umap_reducer = UMAP(n_components=umap_dimensions, n_neighbors=args.n_neighbors, min_dist=0.0,random_state=42)
                 X_processed = umap_reducer.fit_transform(X)
                 _inner_print(args,f"[Class {c}] Original feature dimension: {X.shape[1]} After UMAP: {X_processed.shape[1]}", log_file_path)
 
@@ -285,6 +289,8 @@ def get_args():
     parser.add_argument('--local_model_path', type=str, default='/root/autodl-tmp/model/SDXL-Refiner', help='Model Dir')
     parser.add_argument("--seed",  type=int, default=0)
     parser.add_argument("--phase", type=int, default=0)
+    parser.add_argument("--generation_tag", type=str, default="",
+                        help="Optional output namespace; does not affect shared feature/cluster caches")
 
     parser.add_argument("--spec",   type=str, default='none', help='Target Dataset')
     parser.add_argument("--nclass", type=int, default=10,     help='The class number of the target dataset')
@@ -329,6 +335,8 @@ def get_args():
     args.saved_clusters_base_name = f"{args.IPC}_n_{args.n_neighbors}_s_{args.min_cluster_size}_saved_clusters.pkl"
 
     _save_dir = os.path.join(args.program_path, "results", args.spec)
+    if args.generation_tag:
+        _save_dir = os.path.join(_save_dir, args.generation_tag)
     args.save_dir = os.path.join(_save_dir, f"Step-{args.sample_step}/IPC-{args.IPC}/DF-{args.denoising_factor}-GTP-{args.guideTPercent}-"
                                             f"gamma-{args.CoDA_guidance_scale}/n_{args.n_neighbors}_s_{args.min_cluster_size}")
 

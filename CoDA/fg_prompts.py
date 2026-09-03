@@ -233,6 +233,13 @@ STANFORD_CARS_CLASSES = (
 )
 
 
+def effective_umap_dimensions(sample_count: int, requested: int = 50) -> int:
+    """Keep UMAP's spectral problem valid for small fine-grained classes."""
+    if sample_count < 4:
+        raise ValueError("CoDA requires at least four source samples per class")
+    return min(requested, sample_count - 2)
+
+
 def prompts_for_classes(spec: str, class_folders: list[str]) -> dict[str, str]:
     if spec == "cub":
         prompts = {

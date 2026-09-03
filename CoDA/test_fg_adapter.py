@@ -8,7 +8,12 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from fg_prompts import AIRCRAFT_VARIANTS, STANFORD_CARS_CLASSES, prompts_for_classes
+from fg_prompts import (
+    AIRCRAFT_VARIANTS,
+    STANFORD_CARS_CLASSES,
+    effective_umap_dimensions,
+    prompts_for_classes,
+)
 class FineGrainedCoDATest(unittest.TestCase):
     def test_canonical_prompt_counts(self):
         self.assertEqual(len(AIRCRAFT_VARIANTS), 100)
@@ -25,6 +30,11 @@ class FineGrainedCoDATest(unittest.TestCase):
         cars = prompts_for_classes("cars", [f"{i:03d}" for i in range(196)])
         self.assertEqual(cars["000"], "AM General Hummer SUV 2000")
         self.assertEqual(cars["195"], "smart fortwo Convertible 2012")
+
+    def test_umap_dimensions_are_capped_for_small_classes(self):
+        self.assertEqual(effective_umap_dimensions(29), 27)
+        self.assertEqual(effective_umap_dimensions(30), 28)
+        self.assertEqual(effective_umap_dimensions(66), 50)
 
     @unittest.skipUnless(
         importlib.util.find_spec("sklearn") and importlib.util.find_spec("hdbscan"),

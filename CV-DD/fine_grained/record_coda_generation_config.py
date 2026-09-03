@@ -23,6 +23,7 @@ def main() -> None:
     parser.add_argument("--spec", required=True)
     parser.add_argument("--classes", required=True, type=int)
     parser.add_argument("--ipc", required=True, type=int)
+    parser.add_argument("--generation-seed", required=True, type=int)
     parser.add_argument("--data-dir", required=True, type=Path)
     parser.add_argument("--model-root", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
@@ -55,9 +56,14 @@ def main() -> None:
         "classes": args.classes,
         "ipc": args.ipc,
         "data_dir": str(args.data_dir.resolve()),
-        "generation_seed": 0,
+        "generation_seed": args.generation_seed,
         "feature_encoder": "SDXL fp16-fix VAE, input resized to 1024x1024",
-        "umap": {"dimensions": 50, "n_neighbors": 15, "min_dist": 0.0, "random_state": 42},
+        "umap": {
+            "dimensions": "min(50, class_sample_count - 2)",
+            "n_neighbors": 15,
+            "min_dist": 0.0,
+            "random_state": 42,
+        },
         "hdbscan": {"min_cluster_size": 5, "min_samples": 3},
         "postprocess": "paper Algorithm 2; FG outlier threshold requires count >= missing IPC",
         "generator": "SDXL Base 1.0",
@@ -72,6 +78,10 @@ def main() -> None:
         "coda_guidance_scale_gamma": 0.05,
         "negative_prompt": None,
         "prompt": "canonical fine-grained class name only",
+        "per_image_seed_formula": (
+            "generation_seed + visible_gpu_id*10000 + class_id*IPC + 1000 + image_id"
+        ),
+        "generation_gpu_count": 2,
         "internal_generation_size": [1024, 1024],
         "saved_image_size": [224, 224],
         "source_sha256": {str(path.relative_to(args.repo_root)): sha256(path) for path in source_files},
