@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+EXP_ROOT="${CODA_EXP_ROOT:-/linxi/dataset/FG_CoDA_standard/v1}"
+DATA_ROOT="${DATA_ROOT:-/linxi/dataset/FG_SRe2L_repro/v1/datasets}"
+MODEL_ROOT="${CODA_MODEL_ROOT:-/linxi/models/CoDA/SDXL-Refiner}"
+LOG_ROOT="$EXP_ROOT/logs"
+STATUS_ROOT="$EXP_ROOT/status"
+LOCK_ROOT="$EXP_ROOT/locks"
+DATASETS=(CUB_imsize224 A_imsize224 SC_imsize224)
+IPCS=(1 3 5)
+STUDENT_SEEDS=(42 43 44)
+EVAL_WAVE_SIZE="${EVAL_WAVE_SIZE:-8}"
+mkdir -p "$LOG_ROOT" "$STATUS_ROOT" "$LOCK_ROOT" "$EXP_ROOT/summary"
+
+timestamp() { date --iso-8601=seconds; }
+
+write_definition() {
+    local revision
+    revision="$(git -C "$ROOT_DIR" rev-parse HEAD)"
+    python - "$EXP_ROOT" "$revision" "$EVAL_WAVE_SIZE" <<'PY'
+import json, os, sys
+from pathlib import Path
+root=Path(sys.argv[1]); revision=sys.argv[2]; wave=int(sys.argv[3])
+expected=[str((root/'results'/d/f'ipc{i}_gseed0_sseed{s}.json').resolve())
+          for d in ('CUB_imsize224','A_imsize224','SC_imsize224')
+          for i in (1,3,5) for s in (42,43,44)]
+payload={
+    'status':'running','method':'CoDA','supervision':'hard_label_cross_entropy',
+    'git_revision':revision,'datasets':['CUB_imsize224','A_imsize224','SC_imsize224'],
+    'ipcs':[1,3,5],'generation_seed':0,'student_seeds':[42,43,44],
+    'expected_generated_sets':9,'expected_results':27,
+    'eval_wave_size':wave,'max_eval_concurrency_per_gpu':4,
+    'model_root':'/linxi/models/CoDA/SDXL-Refiner',
+    'expected_result_files':expected,
+}
+path=root/'matrix_definition.json'; tmp=path.with_suffix('.json.tmp')
+tmp.write_text(json.dumps(payload,indent=2,sort_keys=True)+'\n',encoding='utf-8'); os.replace(tmp,path)
+PY
+}
+
+run_stage() {
+    local stage="$1" dataset="$2" ipc="$3"
+    mkdir -p "$LOG_ROOT/$dataset/ipc${ipc}"
+    CODA_EXP_ROOT="$EXP_ROOT" DATA_ROOT="$DATA_ROOT" CODA_MODEL_ROOT="$MODEL_ROOT" \
+        bash "$ROOT_DIR/CV-DD/fine_grained/run_coda_fg.sh" "$stage" "$dataset" "$ipc" \
+        > "$LOG_ROOT/$dataset/ipc${ipc}/${stage}.log" 2>&1
+}
+
+run_eval() {
+    local dataset="$1" ipc="$2" seed="$3" gpu="$4"
+    CUDA_VISIBLE_DEVICES="$gpu" CODA_EXP_ROOT="$EXP_ROOT" DATA_ROOT="$DATA_ROOT" \
+        CODA_MODEL_ROOT="$MODEL_ROOT" bash "$ROOT_DIR/CV-DD/fine_grained/run_coda_fg.sh" \
+        eval-hard "$dataset" "$ipc" "$seed" \
+        > "$LOG_ROOT/$dataset/ipc${ipc}/eval_sseed${seed}.log" 2>&1
+}
+
+wait_wave() {
+    local failed=0 pid
+    for pid in "$@"; do wait "$pid" || failed=1; done
+    (( failed == 0 ))
+}
+
+main() {
+    exec 9>"$LOCK_ROOT/launcher.lock"
+    flock -n 9 || { echo "CoDA fine-grained queue is already running" >&2; exit 1; }
+    export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+    export TORCH_HOME=/linxi/dataset/FD2/torch_cache
+    export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+    [[ -f "$MODEL_ROOT/sdxl-base/model_index.json" ]] || { echo "missing SDXL base" >&2; exit 1; }
+    for dataset in "${DATASETS[@]}"; do
+        [[ -d "$DATA_ROOT/$dataset/train" && -d "$DATA_ROOT/$dataset/test" ]] || {
+            echo "missing prepared dataset: $DATA_ROOT/$dataset" >&2; exit 1;
+        }
+    done
+    write_definition
+    echo "$(timestamp) generation started" > "$STATUS_ROOT/generation.running"
+    for dataset in "${DATASETS[@]}"; do
+        run_stage features "$dataset" 1
+        for ipc in "${IPCS[@]}"; do
+            run_stage cluster "$dataset" "$ipc"
+            run_stage generate "$dataset" "$ipc"
+            run_stage audit "$dataset" "$ipc"
+        done
+    done
+    rm -f "$STATUS_ROOT/generation.running"
+    echo "$(timestamp) generation complete" > "$STATUS_ROOT/generation.complete"
+
+    echo "$(timestamp) evaluation started" > "$STATUS_ROOT/evaluation.running"
+    local task_index=0 pids=() dataset ipc seed gpu
+    for dataset in "${DATASETS[@]}"; do
+        for ipc in "${IPCS[@]}"; do
+            for seed in "${STUDENT_SEEDS[@]}"; do
+                gpu=$((task_index % 2))
+                run_eval "$dataset" "$ipc" "$seed" "$gpu" &
+                pids+=("$!")
+                task_index=$((task_index + 1))
+                if (( ${#pids[@]} == EVAL_WAVE_SIZE )); then
+                    wait_wave "${pids[@]}"
+                    pids=()
+                fi
+            done
+        done
+    done
+    if (( ${#pids[@]} > 0 )); then wait_wave "${pids[@]}"; fi
+    rm -f "$STATUS_ROOT/evaluation.running"
+    echo "$(timestamp) evaluation complete" > "$STATUS_ROOT/evaluation.complete"
+    python "$ROOT_DIR/CV-DD/fine_grained/summarize_coda_fg.py" \
+        --experiment-root "$EXP_ROOT" --output "$EXP_ROOT/summary/coda_fg_hard_label.json" \
+        > "$LOG_ROOT/summary.log" 2>&1
+    python - "$EXP_ROOT/matrix_definition.json" <<'PY'
+import json, os, sys
+from pathlib import Path
+path=Path(sys.argv[1]); payload=json.loads(path.read_text(encoding='utf-8'))
+payload['status']='complete'; tmp=path.with_suffix('.json.tmp')
+tmp.write_text(json.dumps(payload,indent=2,sort_keys=True)+'\n',encoding='utf-8'); os.replace(tmp,path)
+PY
+    echo "$(timestamp) launcher complete" > "$STATUS_ROOT/launcher.complete"
+}
+
+main
