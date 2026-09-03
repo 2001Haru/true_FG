@@ -11,6 +11,7 @@ import numpy as np
 from fg_prompts import (
     AIRCRAFT_VARIANTS,
     STANFORD_CARS_CLASSES,
+    align_features_by_path,
     effective_umap_dimensions,
     prompts_for_classes,
 )
@@ -35,6 +36,14 @@ class FineGrainedCoDATest(unittest.TestCase):
         self.assertEqual(effective_umap_dimensions(29), 27)
         self.assertEqual(effective_umap_dimensions(30), 28)
         self.assertEqual(effective_umap_dimensions(66), 50)
+
+    def test_dino_selection_retrieves_path_aligned_vae_latents(self):
+        aligned = align_features_by_path(
+            ["b.jpg", "a.jpg"],
+            ["a.jpg", "b.jpg"],
+            ["vae-a", "vae-b"],
+        )
+        self.assertEqual(aligned, ["vae-b", "vae-a"])
 
     @unittest.skipUnless(
         importlib.util.find_spec("sklearn") and importlib.util.find_spec("hdbscan"),

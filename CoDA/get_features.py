@@ -23,12 +23,23 @@ def setup_distributed(rank, world_size):
     torch.cuda.set_device(rank)
 
 def get_distributed_loader(args, rank, world_size, return_path=False, mode_id_file=None):
-    transform = transforms.Compose([
-        # transforms.Resize((256, 256), interpolation=transforms.InterpolationMode.LANCZOS),
-        transforms.Resize((1024, 1024), interpolation=transforms.InterpolationMode.LANCZOS),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True)
-    ])
+    if args.feature_space == "vae":
+        transform = transforms.Compose([
+            transforms.Resize((1024, 1024), interpolation=transforms.InterpolationMode.LANCZOS),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True)
+        ])
+    else:
+        # Exact transform encoded by the local DINOv2 preprocessor config.
+        transform = transforms.Compose([
+            transforms.Resize(256, interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225],
+            ),
+        ])
 
     dataset_train = os.path.join(args.dataset_dir, "train")
     dataset = ImageFolder(dataset_train, transform=transform, nclass=args.nclass,
@@ -68,6 +79,22 @@ def merge_distributed_features(world_size, features_cache_path, args):
     for chunk_id in range(num_chunks):
         if chunk_id in chunked_data:
             data_chunk = chunked_data[chunk_id]
+            # DistributedSampler pads odd-sized datasets. Remove its repeated
+            # path so clustering sees every real image exactly once.
+            for label in list(data_chunk["paths"]):
+                unique_paths = []
+                unique_features = []
+                seen = set()
+                for path, feature in zip(
+                    data_chunk["paths"][label], data_chunk["features"][label]
+                ):
+                    if path in seen:
+                        continue
+                    seen.add(path)
+                    unique_paths.append(path)
+                    unique_features.append(feature)
+                data_chunk["paths"][label] = unique_paths
+                data_chunk["features"][label] = unique_features
             chunk_file_path = f"{features_cache_path}_{chunk_id}"
 
             with open(chunk_file_path, "wb") as f:
@@ -83,10 +110,18 @@ def extract_features_distributed(rank, world_size, args):
         torch.manual_seed(args.seed)
         device = torch.device(f'cuda:{rank}')
 
-        vae16 = load_sdxl_and_refiner(args, VAE16_ONLY=True, VAEFIX=True)
-        vae16 = vae16.to(device).eval()
-        encoder=vae16
-        print(f"Rank {rank}: VAE model loaded.")
+        if args.feature_space == "vae":
+            encoder = load_sdxl_and_refiner(args, VAE16_ONLY=True, VAEFIX=True)
+            encoder = encoder.to(device).eval()
+            print(f"Rank {rank}: VAE model loaded.")
+        else:
+            from transformers import Dinov2Model
+
+            encoder = Dinov2Model.from_pretrained(
+                args.dino_model_path,
+                local_files_only=True,
+            ).to(device).eval()
+            print(f"Rank {rank}: DINOv2 model loaded.")
 
         loader = get_distributed_loader(args, rank, world_size, return_path=True)
 
@@ -99,10 +134,13 @@ def extract_features_distributed(rank, world_size, args):
         with torch.no_grad():
             for batch in tqdm(loader, desc=f"GPU {rank}", position=rank):
                 images, labels, _, paths = batch
-                images = images.to(device).half()
+                images = images.to(device)
 
                 with autocast():
-                    features = encoder.encode(images).latent_dist.mean * encoder.config.scaling_factor
+                    if args.feature_space == "vae":
+                        features = encoder.encode(images.half()).latent_dist.mean * encoder.config.scaling_factor
+                    else:
+                        features = encoder(pixel_values=images).pooler_output
 
                 if torch.isnan(features).any() or torch.isinf(features).any():
                     print(f"WARNING: Rank {rank} - Features contain NaN or Inf. Labels: {labels}")

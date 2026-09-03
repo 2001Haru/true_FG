@@ -24,13 +24,23 @@ def main() -> None:
     parser.add_argument("--classes", required=True, type=int)
     parser.add_argument("--ipc", required=True, type=int)
     parser.add_argument("--generation-seed", required=True, type=int)
+    parser.add_argument("--feature-space", required=True, choices=("vae", "dinov2"))
     parser.add_argument("--data-dir", required=True, type=Path)
     parser.add_argument("--model-root", required=True, type=Path)
+    parser.add_argument("--dino-model-root", required=True, type=Path)
+    parser.add_argument("--cache-root", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     model_index = args.model_root / "sdxl-base" / "model_index.json"
     if not model_index.is_file():
         raise FileNotFoundError(model_index)
+    dino_weights = args.dino_model_root / "model.safetensors"
+    dino_config = args.dino_model_root / "config.json"
+    dino_preprocessor = args.dino_model_root / "preprocessor_config.json"
+    if args.feature_space == "dinov2" and not dino_weights.is_file():
+        raise FileNotFoundError(dino_weights)
+    if args.feature_space == "dinov2" and not dino_preprocessor.is_file():
+        raise FileNotFoundError(dino_preprocessor)
     revision = subprocess.check_output(
         ["git", "-C", str(args.repo_root), "rev-parse", "HEAD"], text=True
     ).strip()
@@ -57,12 +67,23 @@ def main() -> None:
         "spec": args.spec,
         "classes": args.classes,
         "ipc": args.ipc,
+        "feature_space": args.feature_space,
         "data_dir": str(args.data_dir.resolve()),
+        "shared_feature_cache_root": str(args.cache_root.resolve()),
         "generation_seed": args.generation_seed,
-        "feature_encoder": "SDXL fp16-fix VAE, input resized to 1024x1024",
+        "clustering_feature_encoder": (
+            "SDXL fp16-fix VAE flattened latent (65536D), input 1024x1024"
+            if args.feature_space == "vae" else
+            "DINOv2-base final normalized CLS token (768D), Resize256+CenterCrop224"
+        ),
+        "sdxl_guidance_feature": (
+            "same VAE latent used for clustering"
+            if args.feature_space == "vae" else
+            "path-aligned SDXL VAE latent of the source image selected in DINOv2 space"
+        ),
         "umap": {
             "dimensions": "min(50, class_sample_count - 2)",
-            "n_neighbors": 15,
+            "n_neighbors": 5,
             "min_dist": 0.0,
             "random_state": 42,
         },
@@ -71,6 +92,18 @@ def main() -> None:
         "generator": "SDXL Base 1.0",
         "model_root": str(args.model_root.resolve()),
         "model_index_sha256": sha256(model_index),
+        "dino_model_root": (
+            str(args.dino_model_root.resolve()) if args.feature_space == "dinov2" else None
+        ),
+        "dino_model_sha256": (
+            sha256(dino_weights) if args.feature_space == "dinov2" else None
+        ),
+        "dino_config_sha256": (
+            sha256(dino_config) if args.feature_space == "dinov2" else None
+        ),
+        "dino_preprocessor_sha256": (
+            sha256(dino_preprocessor) if args.feature_space == "dinov2" else None
+        ),
         "sampler": "DPM++ Karras",
         "inference_steps": 25,
         "denoising_factor": 1.0,

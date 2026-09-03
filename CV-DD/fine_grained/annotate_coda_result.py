@@ -29,10 +29,12 @@ def main() -> None:
     if payload.get("method") not in (None, "CoDA"):
         raise RuntimeError(f"Refusing to overwrite result method {payload.get('method')!r}")
     audit = json.loads(args.generation_audit.read_text(encoding="utf-8"))
+    config = json.loads(args.generation_config.read_text(encoding="utf-8"))
     if audit.get("status") != "complete":
         raise RuntimeError("CoDA generation audit is incomplete")
     payload.update(
         method="CoDA",
+        coda_feature_space=config["feature_space"],
         supervision="hard_label_cross_entropy",
         generation_seed=args.generation_seed,
         generation_audit=str(args.generation_audit.resolve()),

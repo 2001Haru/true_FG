@@ -19,7 +19,7 @@ import hdbscan
 from get_features import calculate_features_multiprocess
 from postprocess import _inner_print, hdbscan_post
 from generated import  generate_images_multi_gpu
-from fg_prompts import effective_umap_dimensions, prompts_for_classes
+from fg_prompts import align_features_by_path, effective_umap_dimensions, prompts_for_classes
 
 import warnings
 warnings.filterwarnings("ignore", module='sklearn')
@@ -117,13 +117,13 @@ def main(args):
 
     sel_classes, class_labels, class_id_to_name, text_prompts, class_names_for_saving = get_class_info(args)
 
-    # region Encode the original dataset using VAE.
+    # region Encode the original dataset in the selected clustering space.
     if args.calcu_features:
         print(f"Getting features from scratch!")
         calculate_features_multiprocess(args)
     # endregion
 
-    # region Perform clustering in the VAE latent space to identify IPC representative samples, forming set R.
+    # region Cluster in VAE or DINO space and retain path-aligned VAE guidance latents.
     if args.calcu_cluster:
         log_file_path = args.log_file_path
         if args.cluster_detial and args.cluster_logger:
@@ -142,6 +142,20 @@ def main(args):
             original_paths = copy.deepcopy(cache_data["paths"])
             del cache_data
 
+            guidance_features_per_class = original_features_per_class
+            if args.feature_space == "dinov2":
+                guidance_chunk_path = f"{args.guidance_features_cache_path}_{chunk_id}"
+                with open(guidance_chunk_path, "rb") as f:
+                    guidance_cache = pickle.load(f)
+                guidance_features_per_class = {}
+                for class_id, paths in original_paths.items():
+                    guidance_features_per_class[class_id] = align_features_by_path(
+                        paths,
+                        guidance_cache["paths"][class_id],
+                        guidance_cache["features"][class_id],
+                    )
+                del guidance_cache
+
             for c in tqdm(original_features_per_class.keys(), desc=f"Clustering Chunk {chunk_id}"):
 
                 final_resized_real_image_dir = os.path.join(args.save_dir, 'real_images', sel_classes[c])
@@ -150,6 +164,7 @@ def main(args):
                 # preprocess with StandardScaler
                 scaler = StandardScaler()
                 X_original_unscaled = np.stack(original_features_per_class[c])
+                X_guidance_unscaled = np.stack(guidance_features_per_class[c])
                 X = scaler.fit_transform(X_original_unscaled)
 
                 ##########################################################################
@@ -187,7 +202,7 @@ def main(args):
                     # a. Its UMAP coordinates will be passed to the post function as initial_centers
                     initial_centers.append(X_processed[best_point_global_idx])
                     # b. Its original high-dimensional coordinates will be saved for the final replacement
-                    initial_centers_map_original[cluster_id] = X_original_unscaled[best_point_global_idx]
+                    initial_centers_map_original[cluster_id] = X_guidance_unscaled[best_point_global_idx]
                     initial_centers_map_path[cluster_id] = original_paths[c][best_point_global_idx]
 
                 ##########################################################################
@@ -218,7 +233,7 @@ def main(args):
                             closest_point_local_idx = np.argmin(distances)
                             global_indices_sub = np.where(cluster_info['points_mask'])[0]
                             center_local_idx = global_indices_sub[closest_point_local_idx]
-                            final_center = X_original_unscaled[center_local_idx]
+                            final_center = X_guidance_unscaled[center_local_idx]
                             path_to_save = original_paths[c][center_local_idx]
 
                         final_centers_original.append(final_center)
@@ -246,6 +261,8 @@ def main(args):
 
             del clusters_centers
             del original_features_per_class
+            if args.feature_space == "dinov2":
+                del guidance_features_per_class
             del original_paths
     # endregion
 
@@ -287,6 +304,10 @@ def get_args():
     parser.add_argument("--program_path", type=str, default='./', help='Base Dir')
     parser.add_argument('--dataset_dir', type=str, default='/root/autodl-tmp/datasets/ImageNet', help='ImageNet Dir')
     parser.add_argument('--local_model_path', type=str, default='/root/autodl-tmp/model/SDXL-Refiner', help='Model Dir')
+    parser.add_argument('--dino_model_path', type=str, default='', help='Local Hugging Face DINOv2 model')
+    parser.add_argument('--feature_space', choices=('vae', 'dinov2'), default='vae')
+    parser.add_argument('--cache_root', type=str, default='',
+                        help='Shared feature-cache root; defaults to <program_path>/results/clusterfile')
     parser.add_argument("--seed",  type=int, default=0)
     parser.add_argument("--phase", type=int, default=0)
     parser.add_argument("--generation_tag", type=str, default="",
@@ -327,8 +348,15 @@ def get_args():
     ############################################
     # postprocess the args
     ############################################
-    args.specific_cluster_dir = os.path.join(args.program_path, "results/clusterfile", args.spec)
+    cache_root = args.cache_root or os.path.join(args.program_path, "results/clusterfile")
+    if args.feature_space == "vae":
+        args.specific_cluster_dir = os.path.join(cache_root, args.spec)
+    else:
+        args.specific_cluster_dir = os.path.join(cache_root, "dinov2", args.spec)
     args.features_cache_path = os.path.join(args.specific_cluster_dir, "original_features_cache.pkl")
+    args.guidance_features_cache_path = os.path.join(
+        cache_root, args.spec, "original_features_cache.pkl"
+    )
     args.plot_dir = os.path.join(args.specific_cluster_dir, f"Minsize_{args.min_cluster_size}_n_neighbors_{args.n_neighbors}")
     args.log_file_path = os.path.join(args.plot_dir, "logs_cluster_details", f"IPC{args.IPC}", f"n_{args.n_neighbors}_s_{args.min_cluster_size}.txt")
 

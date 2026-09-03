@@ -18,6 +18,7 @@ DATASETS = {
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment-root", required=True, type=Path)
+    parser.add_argument("--feature-space", required=True, choices=("vae", "dinov2"))
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     errors = []
@@ -40,6 +41,7 @@ def main() -> None:
                     found += 1
                     expected = {
                         "method": "CoDA",
+                        "coda_feature_space": args.feature_space,
                         "supervision": "hard_label_cross_entropy",
                         "training_target": "hard_coarse_label",
                         "student_initialization": "random",
@@ -101,6 +103,7 @@ def main() -> None:
     payload = {
         "status": "complete" if found == 81 and not errors else "incomplete",
         "method": "CoDA",
+        "feature_space": args.feature_space,
         "supervision": "hard_label_cross_entropy",
         "generation_seeds": [0, 1, 2],
         "student_seeds": [42, 43, 44],

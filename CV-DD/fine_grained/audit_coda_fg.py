@@ -30,6 +30,7 @@ def main() -> None:
     parser.add_argument("--ipc", required=True, type=int)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--generation-config", required=True, type=Path)
+    parser.add_argument("--cluster-audit", required=True, type=Path)
     args = parser.parse_args()
     cfg = get_dataset(args.dataset_name)
     expected_classes = sorted(path.name for path in (args.data_dir / "train").iterdir() if path.is_dir())
@@ -38,6 +39,9 @@ def main() -> None:
         raise RuntimeError("CoDA class folders do not exactly match the prepared training ImageFolder")
     if not args.generation_config.is_file():
         raise FileNotFoundError(args.generation_config)
+    if not args.cluster_audit.is_file():
+        raise FileNotFoundError(args.cluster_audit)
+    generation_config = json.loads(args.generation_config.read_text(encoding="utf-8"))
 
     tree_digest = hashlib.sha256()
     files = 0
@@ -63,6 +67,7 @@ def main() -> None:
     payload = {
         "status": "complete",
         "method": "CoDA fine-grained adapter",
+        "feature_space": generation_config["feature_space"],
         "dataset": cfg.name,
         "classes": cfg.classes,
         "ipc": args.ipc,
@@ -73,6 +78,8 @@ def main() -> None:
         "tree_sha256": tree_digest.hexdigest(),
         "generation_config": str(args.generation_config.resolve()),
         "generation_config_sha256": sha256(args.generation_config),
+        "cluster_audit": str(args.cluster_audit.resolve()),
+        "cluster_audit_sha256": sha256(args.cluster_audit),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_suffix(args.output.suffix + ".tmp")

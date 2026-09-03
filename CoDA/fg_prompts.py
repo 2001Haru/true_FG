@@ -240,6 +240,23 @@ def effective_umap_dimensions(sample_count: int, requested: int = 50) -> int:
     return min(requested, sample_count - 2)
 
 
+def align_features_by_path(
+    target_paths: list[str],
+    source_paths: list[str],
+    source_features: list,
+) -> list:
+    """Align paired VAE guidance latents to another encoder's path order."""
+    if len(source_paths) != len(source_features):
+        raise ValueError("Source paths and features have different lengths")
+    lookup = dict(zip(source_paths, source_features))
+    if len(lookup) != len(source_paths):
+        raise ValueError("Duplicate paths in guidance feature cache")
+    missing = [path for path in target_paths if path not in lookup]
+    if missing:
+        raise ValueError(f"Guidance feature cache is missing {len(missing)} paths")
+    return [lookup[path] for path in target_paths]
+
+
 def prompts_for_classes(spec: str, class_folders: list[str]) -> dict[str, str]:
     if spec == "cub":
         prompts = {
