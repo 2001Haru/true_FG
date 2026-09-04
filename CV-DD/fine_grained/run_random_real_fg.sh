@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# This node ships an old ONNX-generated protobuf module beside a new protobuf
+# runtime.  Torchvision imports ONNX transitively, so use the established
+# pure-Python compatibility path used by the other fine-grained queues.
+export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION="${PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION:-python}"
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 STAGE="${1:?usage: run_random_real_fg.sh prepare|eval DATASET IPC SELECTION_SEED [STUDENT_SEED]}"
 DATASET="${2:?missing dataset}"
