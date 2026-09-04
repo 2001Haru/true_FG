@@ -78,6 +78,8 @@ payload={
  'status':'running','experiment':'dino_fivearm_ipc1','protocol':'hard_label_v1',
  'git_revision':sys.argv[3], 'protocol_spec_sha256':sys.argv[4],
  'datasets':list(datasets),'ipc':1,
+ 'imagenet_weights_file':'/linxi/models/torchvision/resnet18-f37072fd.pth',
+ 'imagenet_weights_file_sha256':'f37072fd47e89c5e827621c5baffa7500819f7896bbacec160b1a16c560e07ec',
  'deterministic_selection_arms':list(det),
  'deterministic_student_seeds':list(range(42,48)),
  'random_selection_arms':list(random),'random_selection_seeds':[0,1,2],

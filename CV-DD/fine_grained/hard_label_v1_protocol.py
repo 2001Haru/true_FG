@@ -20,6 +20,7 @@ IMAGE_SIZE = 224
 RESIZE_SIZE = 256
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
+IMAGENET_V1_FILE_SHA256 = "f37072fd47e89c5e827621c5baffa7500819f7896bbacec160b1a16c560e07ec"
 
 
 def cosine_lr(initial_lr: float, minimum_lr: float, t: int, total_updates: int) -> float:
@@ -33,4 +34,3 @@ def cosine_lr(initial_lr: float, minimum_lr: float, t: int, total_updates: int) 
     return minimum_lr + 0.5 * (initial_lr - minimum_lr) * (
         1.0 + math.cos(math.pi * t / total_updates)
     )
-

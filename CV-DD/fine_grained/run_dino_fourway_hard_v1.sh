@@ -19,6 +19,7 @@ esac
 DATA_ROOT="${DATA_ROOT:-/linxi/dataset/FG_SRe2L_repro/v1/datasets}"
 CODA_ROOT="${CODA_BASE_ROOT:-/linxi/dataset/FG_CoDA_standard/v2}"
 DINO_MODEL_ROOT="${DINO_MODEL_ROOT:-/linxi/models/DINOv2/dinov2-base}"
+TORCHVISION_MODEL_ROOT="${TORCHVISION_MODEL_ROOT:-/linxi/models/torchvision}"
 EXP_ROOT="${DINO_FIVEARM_EXP_ROOT:-/linxi/dataset/FG_HardLabel_standard/v1/dino_fivearm_ipc1}"
 DATA_DIR="$DATA_ROOT/$DATASET"
 CACHE_DIR="$CODA_ROOT/shared_feature_cache/dinov2/$SPEC"
@@ -64,7 +65,9 @@ case "$STAGE" in
                 --train-dir "$SELECTED_DIR" --val-dir "$DATA_DIR/test" \
                 --dataset-name "$DATASET" --num-classes "$CLASSES" --ipc 1 \
                 --student-seed "$STUDENT_SEED" --result "$RESULT" \
-                --checkpoint-dir "$CHECKPOINT_DIR" --total-updates 3000 \
+                --checkpoint-dir "$CHECKPOINT_DIR" \
+                --imagenet-weights-path "$TORCHVISION_MODEL_ROOT/resnet18-f37072fd.pth" \
+                --total-updates 3000 \
                 --batch-size 64 --backbone-lr 3e-4 --head-lr 3e-3 \
                 --backbone-min-lr 0 --head-min-lr 0 --momentum 0.9 \
                 --weight-decay 5e-4 --eval-every-updates 300 \

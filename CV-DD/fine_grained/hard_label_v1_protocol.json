@@ -4,6 +4,8 @@
   "student": {
     "architecture": "torchvision ResNet18",
     "backbone_initialization": "ResNet18_Weights.IMAGENET1K_V1",
+    "weights_file": "resnet18-f37072fd.pth",
+    "weights_file_sha256": "f37072fd47e89c5e827621c5baffa7500819f7896bbacec160b1a16c560e07ec",
     "classification_head_initialization": "torch.nn.Linear default random initialization",
     "backbone_trainable_from_update": 1
   },

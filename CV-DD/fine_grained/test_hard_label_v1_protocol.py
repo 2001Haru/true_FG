@@ -21,6 +21,7 @@ from hard_label_v1_protocol import (  # noqa: E402
     HEAD_LR,
     IMAGENET_MEAN,
     IMAGENET_STD,
+    IMAGENET_V1_FILE_SHA256,
     TOTAL_UPDATES,
     cosine_lr,
 )
@@ -84,6 +85,7 @@ class HardLabelV1ProtocolTest(unittest.TestCase):
         self.assertEqual(spec["optimization"]["head_initial_lr"], HEAD_LR)
         self.assertEqual(tuple(spec["input"]["normalization_mean"]), IMAGENET_MEAN)
         self.assertEqual(tuple(spec["input"]["normalization_std"]), IMAGENET_STD)
+        self.assertEqual(spec["student"]["weights_file_sha256"], IMAGENET_V1_FILE_SHA256)
 
 
 if __name__ == "__main__":

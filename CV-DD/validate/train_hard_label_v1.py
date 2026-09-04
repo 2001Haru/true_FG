@@ -30,6 +30,7 @@ from hard_label_v1_protocol import (  # noqa: E402
     IMAGE_SIZE,
     IMAGENET_MEAN,
     IMAGENET_STD,
+    IMAGENET_V1_FILE_SHA256,
     MOMENTUM,
     PHYSICAL_BATCH_SIZE,
     PROTOCOL_NAME,
@@ -52,6 +53,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--student-seed", required=True, type=int)
     parser.add_argument("--result", required=True, type=Path)
     parser.add_argument("--checkpoint-dir", required=True, type=Path)
+    parser.add_argument("--imagenet-weights-path", required=True, type=Path)
     parser.add_argument("--total-updates", default=TOTAL_UPDATES, type=int)
     parser.add_argument("--batch-size", default=PHYSICAL_BATCH_SIZE, type=int)
     parser.add_argument("--backbone-lr", default=BACKBONE_LR, type=float)
@@ -289,7 +291,18 @@ def main() -> None:
     )
 
     weights = models.ResNet18_Weights.IMAGENET1K_V1
-    model = models.resnet18(weights=weights, progress=False)
+    if not args.imagenet_weights_path.is_file():
+        raise FileNotFoundError(args.imagenet_weights_path)
+    weights_file_hash = file_sha256(args.imagenet_weights_path)
+    if weights_file_hash != IMAGENET_V1_FILE_SHA256:
+        raise RuntimeError(
+            f"ImageNet-V1 weights SHA-256 {weights_file_hash} != {IMAGENET_V1_FILE_SHA256}"
+        )
+    model = models.resnet18(weights=None)
+    model.load_state_dict(
+        torch.load(args.imagenet_weights_path, map_location="cpu", weights_only=True),
+        strict=True,
+    )
     imagenet_state_sha256 = state_dict_sha256(model.state_dict())
     model.fc = nn.Linear(model.fc.in_features, args.num_classes)
     initial_head_sha256 = state_dict_sha256(model.fc.state_dict())
@@ -387,6 +400,8 @@ def main() -> None:
         "backbone_trainable_from_update": 1,
         "imagenet_weights_enum": "ResNet18_Weights.IMAGENET1K_V1",
         "imagenet_weights_url": weights.url,
+        "imagenet_weights_file": str(args.imagenet_weights_path.resolve()),
+        "imagenet_weights_file_sha256": weights_file_hash,
         "imagenet_initial_state_sha256": imagenet_state_sha256,
         "initial_head_sha256": initial_head_sha256,
         "student_seed": args.student_seed,

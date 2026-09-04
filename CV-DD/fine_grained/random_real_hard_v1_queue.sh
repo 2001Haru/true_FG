@@ -55,6 +55,8 @@ path=Path(sys.argv[1]); root=Path(sys.argv[2])
 payload={
  'status':'running','protocol':'hard_label_v1','method':'RandomReal',
  'git_revision':sys.argv[3], 'datasets':['CUB_imsize224','A_imsize224','SC_imsize224'],
+ 'imagenet_weights_file':'/linxi/models/torchvision/resnet18-f37072fd.pth',
+ 'imagenet_weights_file_sha256':'f37072fd47e89c5e827621c5baffa7500819f7896bbacec160b1a16c560e07ec',
  'ipcs':[1,3,5], 'selection_seeds':[0,1,2], 'student_seeds':[42,43,44],
  'expected_selected_sets':27, 'expected_results':81,
  'student':'torchvision ResNet18, ImageNet1K V1 backbone, random head',
@@ -162,4 +164,3 @@ python "$ROOT_DIR/CV-DD/fine_grained/summarize_random_real_hard_v1.py" \
 set_matrix_status complete
 write_status complete complete
 trap - EXIT
-

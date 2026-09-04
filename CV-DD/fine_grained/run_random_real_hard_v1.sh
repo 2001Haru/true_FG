@@ -21,6 +21,7 @@ esac
 
 DATA_ROOT="${DATA_ROOT:-/linxi/dataset/FG_SRe2L_repro/v1/datasets}"
 EXP_ROOT="${HARD_LABEL_V1_EXP_ROOT:-/linxi/dataset/FG_HardLabel_standard/v1/random_real}"
+TORCHVISION_MODEL_ROOT="${TORCHVISION_MODEL_ROOT:-/linxi/models/torchvision}"
 DATA_DIR="$DATA_ROOT/$DATASET"
 SELECTED_DIR="$EXP_ROOT/selected/$DATASET/rseed${SELECTION_SEED}/ipc${IPC}"
 MANIFEST="$EXP_ROOT/manifests/$DATASET/rseed${SELECTION_SEED}/ipc${IPC}.json"
@@ -48,7 +49,9 @@ case "$STAGE" in
                 --train-dir "$SELECTED_DIR" --val-dir "$DATA_DIR/test" \
                 --dataset-name "$DATASET" --num-classes "$CLASSES" --ipc "$IPC" \
                 --student-seed "$STUDENT_SEED" --result "$RESULT" \
-                --checkpoint-dir "$CHECKPOINT_DIR" --total-updates 3000 \
+                --checkpoint-dir "$CHECKPOINT_DIR" \
+                --imagenet-weights-path "$TORCHVISION_MODEL_ROOT/resnet18-f37072fd.pth" \
+                --total-updates 3000 \
                 --batch-size 64 --backbone-lr 3e-4 --head-lr 3e-3 \
                 --backbone-min-lr 0 --head-min-lr 0 --momentum 0.9 \
                 --weight-decay 5e-4 --eval-every-updates 300 \
@@ -64,4 +67,3 @@ case "$STAGE" in
         ;;
     *) fail "unknown stage: $STAGE" ;;
 esac
-
