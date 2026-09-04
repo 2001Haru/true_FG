@@ -9,6 +9,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--result", required=True, type=Path)
     parser.add_argument("--classes", required=True, type=int)
     parser.add_argument("--validation-images", required=True, type=int)
+    parser.add_argument(
+        "--expected-training-target",
+        default="fkd_soft_label",
+        choices=("fkd_soft_label", "hard_coarse_label"),
+        help="Expected result supervision target; default preserves FKD/SRe2L audits",
+    )
     return parser.parse_args()
 
 
@@ -16,7 +22,12 @@ def fail(message: str) -> None:
     raise RuntimeError(f"result audit failed: {message}")
 
 
-def audit_payload(payload: dict, classes: int, validation_images: int) -> float:
+def audit_payload(
+    payload: dict,
+    classes: int,
+    validation_images: int,
+    expected_training_target: str = "fkd_soft_label",
+) -> float:
     """Validate a result payload and return its audited best Top-1."""
     required = {
         "best_top1", "training_target", "num_classes", "validation_images",
@@ -25,8 +36,11 @@ def audit_payload(payload: dict, classes: int, validation_images: int) -> float:
     missing = sorted(required - payload.keys())
     if missing:
         fail(f"missing keys: {missing}")
-    if payload["training_target"] != "fkd_soft_label":
-        fail(f"unexpected training target: {payload['training_target']}")
+    if payload["training_target"] != expected_training_target:
+        fail(
+            f"unexpected training target: {payload['training_target']} "
+            f"(expected {expected_training_target})"
+        )
     if payload["primary_metric"] != "native_top1":
         fail(f"unexpected primary metric: {payload['primary_metric']}")
     if payload["num_classes"] != classes:
@@ -72,13 +86,19 @@ def main() -> None:
     if not args.result.is_file():
         fail(f"missing result: {args.result}")
     payload = json.loads(args.result.read_text(encoding="utf-8"))
-    best = audit_payload(payload, args.classes, args.validation_images)
+    best = audit_payload(
+        payload,
+        args.classes,
+        args.validation_images,
+        expected_training_target=args.expected_training_target,
+    )
     print(json.dumps({
         "status": "complete",
         "result": str(args.result.resolve()),
         "best_top1": best,
         "classes": args.classes,
         "validation_images": args.validation_images,
+        "training_target": args.expected_training_target,
     }, sort_keys=True))
 
 

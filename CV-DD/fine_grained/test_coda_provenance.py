@@ -32,6 +32,37 @@ def digest(path: Path) -> str:
 
 
 class CoDAProvenanceTest(unittest.TestCase):
+    def test_hard_label_result_audit_is_explicit_and_backward_compatible(self):
+        auditor = load_module("result_auditor", "audit_result.py")
+        payload = {
+            "best_top1": 50.0,
+            "training_target": "hard_coarse_label",
+            "num_classes": 2,
+            "validation_images": 2,
+            "primary_metric": "native_top1",
+            "native_top1_at_best_checkpoint": 50.0,
+            "per_class": [
+                {"class_id": 0, "correct": 1, "total": 1, "accuracy": 100.0},
+                {"class_id": 1, "correct": 0, "total": 1, "accuracy": 0.0},
+            ],
+        }
+        with self.assertRaisesRegex(RuntimeError, "expected fkd_soft_label"):
+            auditor.audit_payload(payload, classes=2, validation_images=2)
+        self.assertEqual(
+            auditor.audit_payload(
+                payload,
+                classes=2,
+                validation_images=2,
+                expected_training_target="hard_coarse_label",
+            ),
+            50.0,
+        )
+        soft_payload = dict(payload, training_target="fkd_soft_label")
+        self.assertEqual(
+            auditor.audit_payload(soft_payload, classes=2, validation_images=2),
+            50.0,
+        )
+
     def test_cluster_and_generation_audits_preserve_image_lineage(self):
         cluster_auditor = load_module("cluster_auditor", "audit_coda_clusters.py")
         generation_auditor = load_module("generation_auditor", "audit_coda_fg.py")

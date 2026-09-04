@@ -167,7 +167,8 @@ case "$STAGE" in
             --result "$result" --generation-audit "$AUDIT" \
             --generation-config "$CONFIG" --generation-seed "$GENERATION_SEED"
         python "$ROOT_DIR/CV-DD/fine_grained/audit_result.py" \
-            --result "$result" --classes "$CLASSES" --validation-images "$VAL_IMAGES"
+            --result "$result" --classes "$CLASSES" --validation-images "$VAL_IMAGES" \
+            --expected-training-target hard_coarse_label
         ;;
     *) echo "Unknown stage: $STAGE" >&2; exit 2 ;;
 esac
