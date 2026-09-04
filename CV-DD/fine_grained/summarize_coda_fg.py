@@ -61,6 +61,7 @@ def main() -> None:
                         "mix_type": None,
                         "fkd_path": None,
                         "generation_seed": generation_seed,
+                        "coda_eval_openblas_num_threads": 1,
                     }
                     for key, value in expected.items():
                         actual = payload.get(key)

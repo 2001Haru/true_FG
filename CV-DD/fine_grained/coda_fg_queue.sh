@@ -27,6 +27,19 @@ EVALS_PER_GPU="${CODA_EVALS_PER_GPU:-3}"
 [[ "$GPU_COUNT" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid GPU count: $GPU_COUNT" >&2; exit 2; }
 [[ "$EVALS_PER_GPU" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid evals/GPU: $EVALS_PER_GPU" >&2; exit 2; }
 EVAL_WAVE_SIZE="${EVAL_WAVE_SIZE:-$((GPU_COUNT * EVALS_PER_GPU))}"
+EVAL_MEMORY_GIB_PER_PROCESS="${CODA_EVAL_MEMORY_GIB_PER_PROCESS:-12}"
+EVAL_MEMORY_HEADROOM_GIB="${CODA_EVAL_MEMORY_HEADROOM_GIB:-8}"
+MEMORY_LIMIT_FILE="/sys/fs/cgroup/memory/memory.limit_in_bytes"
+MEMORY_LIMIT_BYTES="$(cat "$MEMORY_LIMIT_FILE" 2>/dev/null || echo 0)"
+EVAL_MEMORY_REQUIRED_BYTES=$((
+    (EVAL_WAVE_SIZE * EVAL_MEMORY_GIB_PER_PROCESS + EVAL_MEMORY_HEADROOM_GIB)
+    * 1024 * 1024 * 1024
+))
+if [[ "$MEMORY_LIMIT_BYTES" =~ ^[0-9]+$ ]] \
+    && (( MEMORY_LIMIT_BYTES > 0 && MEMORY_LIMIT_BYTES < EVAL_MEMORY_REQUIRED_BYTES )); then
+    echo "Refusing unsafe CoDA eval wave: cgroup memory $MEMORY_LIMIT_BYTES bytes < required $EVAL_MEMORY_REQUIRED_BYTES bytes" >&2
+    exit 2
+fi
 mkdir -p "$LOG_ROOT" "$STATUS_ROOT" "$GLOBAL_LOCK_ROOT" "$EXP_ROOT/summary"
 
 timestamp() { date --iso-8601=seconds; }
@@ -35,11 +48,13 @@ write_definition() {
     local revision
     revision="$(git -C "$ROOT_DIR" rev-parse HEAD)"
     python - "$EXP_ROOT" "$revision" "$EVAL_WAVE_SIZE" "$FEATURE_SPACE" \
-        "$GPU_COUNT" "$EVALS_PER_GPU" <<'PY'
+        "$GPU_COUNT" "$EVALS_PER_GPU" "$MEMORY_LIMIT_BYTES" \
+        "$EVAL_MEMORY_GIB_PER_PROCESS" "$EVAL_MEMORY_HEADROOM_GIB" <<'PY'
 import json, os, sys
 from pathlib import Path
 root=Path(sys.argv[1]); revision=sys.argv[2]; wave=int(sys.argv[3]); feature_space=sys.argv[4]
 gpu_count=int(sys.argv[5]); evals_per_gpu=int(sys.argv[6])
+memory_limit_bytes=int(sys.argv[7]); memory_per_eval_gib=int(sys.argv[8]); memory_headroom_gib=int(sys.argv[9])
 expected=[str((root/'results'/d/f'ipc{i}_gseed{g}_sseed{s}.json').resolve())
           for d in ('CUB_imsize224','A_imsize224','SC_imsize224')
           for i in (1,3,5) for g in (0,1,2) for s in (42,43,44)]
@@ -52,6 +67,10 @@ payload={
     'expected_generated_sets':27,'expected_results':81,
     'gpu_count':gpu_count,'eval_wave_size':wave,
     'max_eval_concurrency_per_gpu':evals_per_gpu,
+    'cgroup_memory_limit_bytes':memory_limit_bytes,
+    'eval_memory_reservation_gib_per_process':memory_per_eval_gib,
+    'eval_memory_fixed_headroom_gib':memory_headroom_gib,
+    'eval_openblas_num_threads':1,
     'sdxl_model_root':'/linxi/models/CoDA/SDXL-Refiner',
     'dino_model_root':'/linxi/models/DINOv2/dinov2-base' if feature_space=='dino_space' else None,
     'expected_result_files':expected,
@@ -73,7 +92,8 @@ run_stage() {
 
 run_eval() {
     local dataset="$1" ipc="$2" generation_seed="$3" student_seed="$4" gpu="$5"
-    CUDA_VISIBLE_DEVICES="$gpu" CODA_BASE_ROOT="$BASE_ROOT" CODA_CACHE_ROOT="$CACHE_ROOT" \
+    CUDA_VISIBLE_DEVICES="$gpu" OPENBLAS_NUM_THREADS=1 \
+        CODA_BASE_ROOT="$BASE_ROOT" CODA_CACHE_ROOT="$CACHE_ROOT" \
         DATA_ROOT="$DATA_ROOT" CODA_MODEL_ROOT="$MODEL_ROOT" \
         CODA_DINO_MODEL_ROOT="$DINO_MODEL_ROOT" \
         bash "$ROOT_DIR/CV-DD/fine_grained/run_coda_fg.sh" \

@@ -45,6 +45,7 @@ def main() -> None:
         cluster_audit_sha256=audit["cluster_audit_sha256"],
         generation_trace_sha256=audit["generation_trace_sha256"],
         generated_image_provenance_sha256=audit["generated_image_provenance_sha256"],
+        coda_eval_openblas_num_threads=int(os.environ.get("OPENBLAS_NUM_THREADS", "0")),
     )
     temporary = args.result.with_suffix(args.result.suffix + ".tmp")
     temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
