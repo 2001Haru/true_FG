@@ -112,7 +112,10 @@ class CoDAProvenanceTest(unittest.TestCase):
 
             config = root / "config.json"
             config.write_text(
-                json.dumps({"feature_space": "vae", "generation_seed": 0}), encoding="utf-8"
+                json.dumps(
+                    {"feature_space": "vae", "generation_seed": 0, "generation_gpu_count": 1}
+                ),
+                encoding="utf-8",
             )
             trace = root / "trace.json"
             trace.write_text(
@@ -121,6 +124,7 @@ class CoDAProvenanceTest(unittest.TestCase):
                         "status": "complete",
                         "feature_space": "vae",
                         "generation_seed": 0,
+                        "generation_gpu_count": 1,
                         "images": [
                             {
                                 "class_id": class_id,

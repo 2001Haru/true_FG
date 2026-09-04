@@ -9,6 +9,7 @@ DATASET="${3:?missing dataset}"
 IPC="${4:?missing IPC}"
 GENERATION_SEED="${5:-0}"
 STUDENT_SEED="${6:-}"
+GENERATION_GPU_COUNT="${CODA_GENERATION_GPU_COUNT:-$(nvidia-smi --query-gpu=index --format=csv,noheader | wc -l)}"
 
 case "$FEATURE_SPACE" in
     vae_space) FEATURE_ARG=vae ;;
@@ -54,7 +55,8 @@ if [[ ! -f "$CONFIG" ]]; then
     python "$ROOT_DIR/CV-DD/fine_grained/record_coda_generation_config.py" \
         --repo-root "$ROOT_DIR" --dataset-name "$DATASET" --spec "$SPEC" \
         --classes "$CLASSES" --ipc "$IPC" --data-dir "$DATA_DIR" \
-        --generation-seed "$GENERATION_SEED" --feature-space "$FEATURE_ARG" \
+        --generation-seed "$GENERATION_SEED" --generation-gpu-count "$GENERATION_GPU_COUNT" \
+        --feature-space "$FEATURE_ARG" \
         --model-root "$MODEL_ROOT" --dino-model-root "$DINO_MODEL_ROOT" \
         --cache-root "$CACHE_ROOT" --output "$CONFIG" > "$LOG_ROOT/config.log"
 fi

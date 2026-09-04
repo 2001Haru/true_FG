@@ -24,6 +24,7 @@ def main() -> None:
     parser.add_argument("--classes", required=True, type=int)
     parser.add_argument("--ipc", required=True, type=int)
     parser.add_argument("--generation-seed", required=True, type=int)
+    parser.add_argument("--generation-gpu-count", required=True, type=int)
     parser.add_argument("--feature-space", required=True, choices=("vae", "dinov2"))
     parser.add_argument("--data-dir", required=True, type=Path)
     parser.add_argument("--model-root", required=True, type=Path)
@@ -125,7 +126,7 @@ def main() -> None:
         "per_image_seed_formula": (
             "generation_seed + visible_gpu_id*10000 + class_id*IPC + 1000 + image_id"
         ),
-        "generation_gpu_count": 2,
+        "generation_gpu_count": args.generation_gpu_count,
         "internal_generation_size": [1024, 1024],
         "saved_image_size": [224, 224],
         "source_sha256": {str(path.relative_to(args.repo_root)): sha256(path) for path in source_files},

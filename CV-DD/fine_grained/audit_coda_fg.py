@@ -56,6 +56,10 @@ def main() -> None:
         raise RuntimeError("Generation trace feature space differs from frozen config")
     if int(generation_trace.get("generation_seed")) != int(generation_config["generation_seed"]):
         raise RuntimeError("Generation trace seed differs from frozen config")
+    if int(generation_trace.get("generation_gpu_count")) != int(
+        generation_config["generation_gpu_count"]
+    ):
+        raise RuntimeError("Generation trace GPU count differs from frozen config")
 
     representatives = {}
     provenance_files = cluster_audit.get("per_image_provenance_sha256", {})
@@ -86,6 +90,8 @@ def main() -> None:
             + 1000
             + int(row["representative_slot"])
         )
+        if not 0 <= int(row["gpu_id"]) < int(generation_trace["generation_gpu_count"]):
+            raise RuntimeError(f"Invalid generation GPU ID: {key}")
         if int(row["image_seed"]) != expected_seed:
             raise RuntimeError(f"Generation seed formula mismatch: {key}")
         trace_by_key[key] = row

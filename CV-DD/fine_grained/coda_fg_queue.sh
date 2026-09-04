@@ -22,7 +22,11 @@ DATASETS=(CUB_imsize224 A_imsize224 SC_imsize224)
 IPCS=(1 3 5)
 GENERATION_SEEDS=(0 1 2)
 STUDENT_SEEDS=(42 43 44)
-EVAL_WAVE_SIZE="${EVAL_WAVE_SIZE:-8}"
+GPU_COUNT="${CODA_GPU_COUNT:-$(nvidia-smi --query-gpu=index --format=csv,noheader | wc -l)}"
+EVALS_PER_GPU="${CODA_EVALS_PER_GPU:-3}"
+[[ "$GPU_COUNT" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid GPU count: $GPU_COUNT" >&2; exit 2; }
+[[ "$EVALS_PER_GPU" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid evals/GPU: $EVALS_PER_GPU" >&2; exit 2; }
+EVAL_WAVE_SIZE="${EVAL_WAVE_SIZE:-$((GPU_COUNT * EVALS_PER_GPU))}"
 mkdir -p "$LOG_ROOT" "$STATUS_ROOT" "$GLOBAL_LOCK_ROOT" "$EXP_ROOT/summary"
 
 timestamp() { date --iso-8601=seconds; }
@@ -30,10 +34,12 @@ timestamp() { date --iso-8601=seconds; }
 write_definition() {
     local revision
     revision="$(git -C "$ROOT_DIR" rev-parse HEAD)"
-    python - "$EXP_ROOT" "$revision" "$EVAL_WAVE_SIZE" "$FEATURE_SPACE" <<'PY'
+    python - "$EXP_ROOT" "$revision" "$EVAL_WAVE_SIZE" "$FEATURE_SPACE" \
+        "$GPU_COUNT" "$EVALS_PER_GPU" <<'PY'
 import json, os, sys
 from pathlib import Path
 root=Path(sys.argv[1]); revision=sys.argv[2]; wave=int(sys.argv[3]); feature_space=sys.argv[4]
+gpu_count=int(sys.argv[5]); evals_per_gpu=int(sys.argv[6])
 expected=[str((root/'results'/d/f'ipc{i}_gseed{g}_sseed{s}.json').resolve())
           for d in ('CUB_imsize224','A_imsize224','SC_imsize224')
           for i in (1,3,5) for g in (0,1,2) for s in (42,43,44)]
@@ -44,7 +50,8 @@ payload={
     'ipcs':[1,3,5],'generation_seeds':[0,1,2],'student_seeds':[42,43,44],
     'discovery':{'n_neighbors':5,'min_cluster_size':2,'min_samples':1},
     'expected_generated_sets':27,'expected_results':81,
-    'eval_wave_size':wave,'max_eval_concurrency_per_gpu':4,
+    'gpu_count':gpu_count,'eval_wave_size':wave,
+    'max_eval_concurrency_per_gpu':evals_per_gpu,
     'sdxl_model_root':'/linxi/models/CoDA/SDXL-Refiner',
     'dino_model_root':'/linxi/models/DINOv2/dinov2-base' if feature_space=='dino_space' else None,
     'expected_result_files':expected,
@@ -141,7 +148,7 @@ PY
         for ipc in "${IPCS[@]}"; do
             for generation_seed in "${GENERATION_SEEDS[@]}"; do
                 for student_seed in "${STUDENT_SEEDS[@]}"; do
-                    gpu=$((task_index % 2))
+                    gpu=$((task_index % GPU_COUNT))
                     run_eval "$dataset" "$ipc" "$generation_seed" "$student_seed" "$gpu" &
                     pids+=("$!")
                     task_index=$((task_index + 1))
