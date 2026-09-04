@@ -19,7 +19,7 @@ esac
 DATA_ROOT="${DATA_ROOT:-/linxi/dataset/FG_SRe2L_repro/v1/datasets}"
 CODA_ROOT="${CODA_BASE_ROOT:-/linxi/dataset/FG_CoDA_standard/v2}"
 DINO_MODEL_ROOT="${DINO_MODEL_ROOT:-/linxi/models/DINOv2/dinov2-base}"
-EXP_ROOT="${DINO_FOURWAY_EXP_ROOT:-/linxi/dataset/FG_HardLabel_standard/v1/dino_fourway_ipc1}"
+EXP_ROOT="${DINO_FIVEARM_EXP_ROOT:-/linxi/dataset/FG_HardLabel_standard/v1/dino_fivearm_ipc1}"
 DATA_DIR="$DATA_ROOT/$DATASET"
 CACHE_DIR="$CODA_ROOT/shared_feature_cache/dinov2/$SPEC"
 FEATURE_AUDIT="$CODA_ROOT/cache_audits/dinov2/$DATASET.json"
@@ -41,7 +41,7 @@ case "$STAGE" in
         ;;
     eval)
         case "$ARM" in
-            centroid|inter_class_boundary|outward_frontier)
+            centroid|rival_facing_edge|outward_edge|edge_high_margin)
                 [[ "$STUDENT_SEED" =~ ^(42|43|44|45|46|47)$ ]] \
                     || fail "deterministic selection requires Student seed 42..47"
                 ;;
@@ -78,4 +78,3 @@ case "$STAGE" in
         ;;
     *) fail "unknown stage: $STAGE" ;;
 esac
-

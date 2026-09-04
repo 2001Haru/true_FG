@@ -1,4 +1,4 @@
-"""Summarize the IPC1 DINO geometry four-way hard-label v1 experiment."""
+"""Summarize the IPC1 DINO geometry five-arm hard-label v1 experiment."""
 
 import argparse
 import hashlib
@@ -14,7 +14,12 @@ DATASETS = {
     "A_imsize224": (100, 3333),
     "SC_imsize224": (196, 8041),
 }
-DETERMINISTIC_ARMS = ("centroid", "inter_class_boundary", "outward_frontier")
+DETERMINISTIC_ARMS = (
+    "centroid",
+    "rival_facing_edge",
+    "outward_edge",
+    "edge_high_margin",
+)
 RANDOM_ARMS = ("random_rseed0", "random_rseed1", "random_rseed2")
 
 
@@ -68,7 +73,9 @@ def main() -> None:
                 errors.append(f"geometry class summaries {len(class_summaries)} != {classes}")
             else:
                 dataset_summary["selection_geometry"] = {
-                    "outward_min_rival_overlap_rate": audit.get("outward_min_rival_overlap_rate"),
+                    "outward_edge_high_margin_overlap_rate": audit.get(
+                        "outward_edge_high_margin_overlap_rate"
+                    ),
                     "shell_size_min": min(row["shell_images"] for row in class_summaries),
                     "shell_size_max": max(row["shell_images"] for row in class_summaries),
                     "shell_size_mean": statistics.mean(
@@ -90,7 +97,7 @@ def main() -> None:
                     "method": "DINORealSelection",
                     "dataset": dataset,
                     "ipc": 1,
-                    "selection_experiment": "dino_fourway_ipc1",
+                    "selection_experiment": "dino_fivearm_ipc1",
                     "selection_method": method,
                     "selection_arm": method,
                     "selection_seed": None,
@@ -137,7 +144,7 @@ def main() -> None:
                     "method": "DINORealSelection",
                     "dataset": dataset,
                     "ipc": 1,
-                    "selection_experiment": "dino_fourway_ipc1",
+                    "selection_experiment": "dino_fivearm_ipc1",
                     "selection_method": "random",
                     "selection_arm": arm,
                     "selection_seed": selection_seed,
@@ -179,11 +186,11 @@ def main() -> None:
             dataset_summary["random"] = random_summary
         summary[dataset] = dataset_summary
     payload = {
-        "status": "complete" if found == 81 and not errors else "incomplete",
+        "status": "complete" if found == 99 and not errors else "incomplete",
         "protocol": "hard_label_v1",
-        "experiment": "dino_fourway_ipc1",
+        "experiment": "dino_fivearm_ipc1",
         "primary_metric": "final_update_top1",
-        "expected_results": 81,
+        "expected_results": 99,
         "found_results": found,
         "deterministic_student_seeds": [42, 43, 44, 45, 46, 47],
         "random_selection_seeds": [0, 1, 2],
@@ -197,7 +204,7 @@ def main() -> None:
     os.replace(temporary, args.output)
     print(json.dumps(payload, indent=2, sort_keys=True))
     if payload["status"] != "complete":
-        raise RuntimeError(f"four-way matrix incomplete: {len(errors)} errors")
+        raise RuntimeError(f"five-arm matrix incomplete: {len(errors)} errors")
 
 
 if __name__ == "__main__":

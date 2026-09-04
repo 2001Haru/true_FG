@@ -2,14 +2,14 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-EXP_ROOT="${DINO_FOURWAY_EXP_ROOT:-/linxi/dataset/FG_HardLabel_standard/v1/dino_fourway_ipc1}"
+EXP_ROOT="${DINO_FIVEARM_EXP_ROOT:-/linxi/dataset/FG_HardLabel_standard/v1/dino_fivearm_ipc1}"
 DATA_ROOT="${DATA_ROOT:-/linxi/dataset/FG_SRe2L_repro/v1/datasets}"
 LOG_ROOT="$EXP_ROOT/logs"
 STATUS_PATH="$EXP_ROOT/queue_status.json"
 MATRIX_PATH="$EXP_ROOT/matrix_definition.json"
 GLOBAL_LOCK_ROOT="${GLOBAL_GPU_LOCK_ROOT:-/linxi/dataset/FG_CoDA_standard/v2/locks}"
 DATASETS=(CUB_imsize224 A_imsize224 SC_imsize224)
-DETERMINISTIC_ARMS=(centroid inter_class_boundary outward_frontier)
+DETERMINISTIC_ARMS=(centroid rival_facing_edge outward_edge edge_high_margin)
 DETERMINISTIC_STUDENT_SEEDS=(42 43 44 45 46 47)
 RANDOM_ARMS=(random_rseed0 random_rseed1 random_rseed2)
 RANDOM_STUDENT_SEEDS=(42 43 44)
@@ -66,7 +66,7 @@ import json, os, sys
 from pathlib import Path
 path=Path(sys.argv[1]); root=Path(sys.argv[2])
 datasets=('CUB_imsize224','A_imsize224','SC_imsize224')
-det=('centroid','inter_class_boundary','outward_frontier')
+det=('centroid','rival_facing_edge','outward_edge','edge_high_margin')
 random=('random_rseed0','random_rseed1','random_rseed2')
 expected=[]
 for dataset in datasets:
@@ -75,15 +75,19 @@ for dataset in datasets:
  for arm in random:
   expected.extend(str((root/'results'/dataset/arm/f'sseed{s}.json').resolve()) for s in range(42,45))
 payload={
- 'status':'running','experiment':'dino_fourway_ipc1','protocol':'hard_label_v1',
+ 'status':'running','experiment':'dino_fivearm_ipc1','protocol':'hard_label_v1',
  'git_revision':sys.argv[3], 'protocol_spec_sha256':sys.argv[4],
  'datasets':list(datasets),'ipc':1,
  'deterministic_selection_arms':list(det),
  'deterministic_student_seeds':list(range(42,48)),
  'random_selection_arms':list(random),'random_selection_seeds':[0,1,2],
- 'random_student_seeds':[42,43,44], 'expected_results':81,
+ 'random_student_seeds':[42,43,44], 'expected_results':99,
  'selection_geometry':'DINOv2 L2-normalized pooler output; normalized class prototypes; cosine',
- 'edge_shell':{'margin_minimum':0.0,'radial_percentile':[0.70,0.95]},
+ 'edge_shell':{
+  'prototype_correctness_filter':False,
+  'radial_percentile':[0.70,0.95],
+  'revision_reason':'m>=0 tests an unadapted DINO nearest-centroid proxy, not label validity',
+ },
  'post_eval_image_augmentation':'hard_label_v1 unchanged: Resize256->RandomCrop224->flip',
  'selection_image_augmentation':'none: deterministic Resize256->CenterCrop224',
  'gpu_count':int(sys.argv[5]),'max_eval_concurrency_per_gpu':int(sys.argv[6]),
@@ -112,7 +116,7 @@ write_status running selection
 for dataset in "${DATASETS[@]}"; do
     CURRENT_STAGE="selection:$dataset"
     mkdir -p "$LOG_ROOT/$dataset"
-    DATA_ROOT="$DATA_ROOT" DINO_FOURWAY_EXP_ROOT="$EXP_ROOT" \
+    DATA_ROOT="$DATA_ROOT" DINO_FIVEARM_EXP_ROOT="$EXP_ROOT" \
         bash "$ROOT_DIR/CV-DD/fine_grained/run_dino_fourway_hard_v1.sh" \
         prepare "$dataset" > "$LOG_ROOT/$dataset/selection.log" 2>&1
 done
@@ -127,7 +131,7 @@ run_eval() {
     local dataset="$1" arm="$2" student_seed="$3" gpu="$4"
     mkdir -p "$LOG_ROOT/$dataset/$arm"
     CUDA_VISIBLE_DEVICES="$gpu" OPENBLAS_NUM_THREADS=1 DATA_ROOT="$DATA_ROOT" \
-        DINO_FOURWAY_EXP_ROOT="$EXP_ROOT" \
+        DINO_FIVEARM_EXP_ROOT="$EXP_ROOT" \
         bash "$ROOT_DIR/CV-DD/fine_grained/run_dino_fourway_hard_v1.sh" \
         eval "$dataset" "$arm" "$student_seed" \
         > "$LOG_ROOT/$dataset/$arm/eval_sseed${student_seed}.log" 2>&1
@@ -165,9 +169,8 @@ if (( ${#pids[@]} > 0 )); then wait_wave "${pids[@]}"; fi
 
 CURRENT_STAGE=summary
 python "$ROOT_DIR/CV-DD/fine_grained/summarize_dino_fourway_hard_v1.py" \
-    --experiment-root "$EXP_ROOT" --output "$EXP_ROOT/summary/dino_fourway_hard_v1.json" \
+    --experiment-root "$EXP_ROOT" --output "$EXP_ROOT/summary/dino_fivearm_hard_v1.json" \
     > "$LOG_ROOT/summary.log" 2>&1
 set_matrix_status complete
 write_status complete complete
 trap - EXIT
-

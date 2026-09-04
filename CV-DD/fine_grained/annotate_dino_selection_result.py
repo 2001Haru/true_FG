@@ -1,4 +1,4 @@
-"""Attach four-way DINO selection provenance to a hard-label v1 result."""
+"""Attach five-arm DINO selection provenance to a hard-label v1 result."""
 
 import argparse
 import hashlib
@@ -22,8 +22,8 @@ def main() -> None:
     args = parser.parse_args()
     payload = json.loads(args.result.read_text(encoding="utf-8"))
     manifest = json.loads(args.selection_manifest.read_text(encoding="utf-8"))
-    if manifest.get("status") != "complete" or manifest.get("experiment") != "dino_fourway_ipc1":
-        raise RuntimeError("selection manifest is not a complete four-way DINO manifest")
+    if manifest.get("status") != "complete" or manifest.get("experiment") != "dino_fivearm_ipc1":
+        raise RuntimeError("selection manifest is not a complete five-arm DINO manifest")
     audit_path = Path(manifest["selection_audit"])
     if not audit_path.is_file() or sha256(audit_path) != manifest["selection_audit_sha256"]:
         raise RuntimeError("selection geometry audit is missing or changed")
@@ -33,7 +33,7 @@ def main() -> None:
     payload.update(
         method="DINORealSelection",
         supervision="hard_label_cross_entropy",
-        selection_experiment="dino_fourway_ipc1",
+        selection_experiment="dino_fivearm_ipc1",
         selection_method=manifest["selection_method"],
         selection_arm=manifest["selection_arm"],
         selection_seed=manifest["selection_seed"],
@@ -53,4 +53,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

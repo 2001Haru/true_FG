@@ -1,4 +1,4 @@
-"""Select IPC1 real images using four controlled DINO cosine geometries."""
+"""Select IPC1 real images using five controlled DINO cosine geometries."""
 
 import argparse
 import hashlib
@@ -13,7 +13,12 @@ import numpy as np
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
-DETERMINISTIC_METHODS = ("centroid", "inter_class_boundary", "outward_frontier")
+DETERMINISTIC_METHODS = (
+    "centroid",
+    "rival_facing_edge",
+    "outward_edge",
+    "edge_high_margin",
+)
 RANDOM_SEEDS = (0, 1, 2)
 SHELL_LOW = 0.70
 SHELL_HIGH = 0.95
@@ -203,10 +208,8 @@ def main() -> None:
     percentile = np.empty(len(all_paths), dtype=np.float64)
     shell = np.zeros(len(all_paths), dtype=bool)
     selections = {method: {} for method in DETERMINISTIC_METHODS}
-    selections["outward_min_rival"] = {}
     random_selections = {seed: {} for seed in RANDOM_SEEDS}
     class_summaries = []
-    empty_shell_classes = []
     for class_id in range(args.classes):
         indices = per_class_indices[class_id]
         similarities = z_matrix[indices] @ prototypes.T
@@ -226,23 +229,19 @@ def main() -> None:
         denominator = max(len(ranked) - 1, 1)
         for rank, global_index in enumerate(ranked):
             percentile[global_index] = rank / denominator
-            shell[global_index] = (
-                margin[global_index] >= 0
-                and SHELL_LOW <= percentile[global_index] <= SHELL_HIGH
-            )
+            shell[global_index] = SHELL_LOW <= percentile[global_index] <= SHELL_HIGH
         shell_indices = [index for index in indices if shell[index]]
         if not shell_indices:
-            empty_shell_classes.append(class_id)
-            continue
+            raise RuntimeError(f"empty pure-radial edge shell for class {class_id}")
         selections["centroid"][class_id] = stable_argmax(indices, own_similarity, all_paths)
-        selections["inter_class_boundary"][class_id] = stable_argmin(
-            shell_indices, margin, all_paths
-        )
-        selections["outward_frontier"][class_id] = stable_argmax(
-            shell_indices, margin, all_paths
-        )
-        selections["outward_min_rival"][class_id] = stable_argmin(
+        selections["rival_facing_edge"][class_id] = stable_argmax(
             shell_indices, rival_similarity, all_paths
+        )
+        selections["outward_edge"][class_id] = stable_argmin(
+            shell_indices, rival_similarity, all_paths
+        )
+        selections["edge_high_margin"][class_id] = stable_argmax(
+            shell_indices, margin, all_paths
         )
         for seed in RANDOM_SEEDS:
             random_selections[seed][class_id] = min(
@@ -251,8 +250,8 @@ def main() -> None:
                     seed, Path(all_paths[index]).relative_to(source_root).as_posix()
                 ),
             )
-        outward = selections["outward_frontier"][class_id]
-        isolated = selections["outward_min_rival"][class_id]
+        outward = selections["outward_edge"][class_id]
+        high_margin = selections["edge_high_margin"][class_id]
         class_summaries.append(
             {
                 "class_id": class_id,
@@ -262,10 +261,10 @@ def main() -> None:
                     sum(bool(margin[index] >= 0) for index in indices)
                 ),
                 "shell_images": len(shell_indices),
-                "outward_matches_min_rival": outward == isolated,
+                "outward_matches_edge_high_margin": outward == high_margin,
                 "selected_indices": {
                     method: selections[method][class_id]
-                    for method in (*DETERMINISTIC_METHODS, "outward_min_rival")
+                    for method in DETERMINISTIC_METHODS
                 },
             }
         )
@@ -286,7 +285,7 @@ def main() -> None:
             "in_edge_shell": bool(shell[index]),
             "selected_by": [
                 method
-                for method in (*DETERMINISTIC_METHODS, "outward_min_rival")
+                for method in DETERMINISTIC_METHODS
                 if selections[method].get(all_class_ids[index]) == index
             ]
             + [
@@ -298,7 +297,7 @@ def main() -> None:
         for index in range(len(all_paths))
     ]
     audit = {
-        "status": "invalid" if empty_shell_classes else "complete",
+        "status": "complete",
         "dataset": args.dataset_name,
         "classes": args.classes,
         "ipc": 1,
@@ -326,26 +325,31 @@ def main() -> None:
         ).hexdigest(),
         "radial_percentile_definition": "zero-based stable rank/(class_size-1), ascending r; path tie-break",
         "shell": {
-            "minimum_margin": 0.0,
+            "prototype_correctness_filter": False,
             "radial_percentile_low_inclusive": SHELL_LOW,
             "radial_percentile_high_inclusive": SHELL_HIGH,
-            "empty_classes": empty_shell_classes,
+            "definition": "0.70 <= within-class percentile(r) <= 0.95",
+            "revision_reason": (
+                "Removed m>=0 before post-eval because it measures correctness of an "
+                "unadapted DINO nearest-centroid proxy, not validity of the ground-truth label"
+            ),
         },
-        "outward_definition": "maximum prototype margin within the shared edge shell",
-        "outward_min_rival_overlap_classes": sum(
-            row["outward_matches_min_rival"] for row in class_summaries
+        "directional_definitions": {
+            "rival_facing_edge": "maximum nearest-rival similarity b within shell",
+            "outward_edge": "minimum nearest-rival similarity b within shell",
+            "edge_high_margin": "maximum prototype margin m=a-b within shell",
+        },
+        "outward_edge_high_margin_overlap_classes": sum(
+            row["outward_matches_edge_high_margin"] for row in class_summaries
         ),
-        "outward_min_rival_overlap_rate": (
-            sum(row["outward_matches_min_rival"] for row in class_summaries) / args.classes
-            if not empty_shell_classes else None
+        "outward_edge_high_margin_overlap_rate": (
+            sum(row["outward_matches_edge_high_margin"] for row in class_summaries)
+            / args.classes
         ),
         "class_summaries": class_summaries,
         "images": image_records,
     }
     write_json(args.audit_output, audit)
-    if empty_shell_classes:
-        raise RuntimeError(f"empty edge shell for classes: {empty_shell_classes}")
-
     arms = {method: selections[method] for method in DETERMINISTIC_METHODS}
     arms.update({f"random_rseed{seed}": random_selections[seed] for seed in RANDOM_SEEDS})
     manifest_paths = {}
@@ -390,7 +394,7 @@ def main() -> None:
         random_seed = int(arm.removeprefix("random_rseed")) if arm.startswith("random_rseed") else None
         manifest = {
             "status": "complete",
-            "experiment": "dino_fourway_ipc1",
+            "experiment": "dino_fivearm_ipc1",
             "dataset": args.dataset_name,
             "classes": args.classes,
             "ipc": 1,
@@ -415,7 +419,9 @@ def main() -> None:
                 "dataset": args.dataset_name,
                 "source_images": len(all_paths),
                 "arms": manifest_paths,
-                "outward_min_rival_overlap_rate": audit["outward_min_rival_overlap_rate"],
+                "outward_edge_high_margin_overlap_rate": audit[
+                    "outward_edge_high_margin_overlap_rate"
+                ],
             },
             indent=2,
             sort_keys=True,

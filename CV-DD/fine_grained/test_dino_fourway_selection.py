@@ -1,4 +1,4 @@
-"""End-to-end fixture test for controlled DINO IPC1 selection."""
+"""End-to-end fixture test for controlled five-arm DINO IPC1 selection."""
 
 import hashlib
 import json
@@ -134,8 +134,9 @@ class DinoFourwaySelectionTest(unittest.TestCase):
             self.assertTrue(all(row["shell_images"] > 0 for row in payload["class_summaries"]))
             for arm in (
                 "centroid",
-                "inter_class_boundary",
-                "outward_frontier",
+                "rival_facing_edge",
+                "outward_edge",
+                "edge_high_margin",
                 "random_rseed0",
                 "random_rseed1",
                 "random_rseed2",
@@ -147,14 +148,15 @@ class DinoFourwaySelectionTest(unittest.TestCase):
                 self.assertEqual(len(manifest["images"]), 3)
             for class_id in range(3):
                 centroid = payload["class_summaries"][class_id]["selected_indices"]["centroid"]
-                interface = payload["class_summaries"][class_id]["selected_indices"][
-                    "inter_class_boundary"
+                rival_facing = payload["class_summaries"][class_id]["selected_indices"][
+                    "rival_facing_edge"
                 ]
                 outward = payload["class_summaries"][class_id]["selected_indices"][
-                    "outward_frontier"
+                    "outward_edge"
                 ]
-                self.assertNotEqual(centroid, interface)
-                self.assertNotEqual(interface, outward)
+                self.assertNotEqual(centroid, rival_facing)
+                self.assertNotEqual(rival_facing, outward)
+            self.assertFalse(payload["shell"]["prototype_correctness_filter"])
 
 
 if __name__ == "__main__":
