@@ -32,6 +32,43 @@ def digest(path: Path) -> str:
 
 
 class CoDAProvenanceTest(unittest.TestCase):
+    def test_random_real_selection_is_deterministic_and_nested(self):
+        preparer = load_module("random_real_preparer", "prepare_random_real_fg.py")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            data = root / "data"
+            for class_id in range(2):
+                class_dir = data / "train" / f"{class_id:03d}"
+                class_dir.mkdir(parents=True)
+                for image_id in range(6):
+                    Image.new("RGB", (8, 8), color=(class_id, image_id, 0)).save(
+                        class_dir / f"{image_id}.png"
+                    )
+            chosen = {}
+            for ipc in (1, 3, 5):
+                output = root / f"ipc{ipc}"
+                manifest = root / f"ipc{ipc}.json"
+                argv = [
+                    "prepare",
+                    "--data-dir", str(data),
+                    "--output-dir", str(output),
+                    "--manifest", str(manifest),
+                    "--dataset-name", "fixture",
+                    "--classes", "2",
+                    "--ipc", str(ipc),
+                    "--selection-seed", "0",
+                    "--link-mode", "copy",
+                ]
+                with mock.patch.object(sys, "argv", argv):
+                    preparer.main()
+                payload = json.loads(manifest.read_text(encoding="utf-8"))
+                chosen[ipc] = {row["source_path"] for row in payload["images"]}
+                self.assertEqual(payload["selected_images"], 2 * ipc)
+                with mock.patch.object(sys, "argv", argv):
+                    preparer.main()
+            self.assertLessEqual(chosen[1], chosen[3])
+            self.assertLessEqual(chosen[3], chosen[5])
+
     def test_hard_label_result_audit_is_explicit_and_backward_compatible(self):
         auditor = load_module("result_auditor", "audit_result.py")
         payload = {
