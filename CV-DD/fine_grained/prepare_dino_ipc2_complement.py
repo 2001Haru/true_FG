@@ -164,11 +164,11 @@ def atomic_json(path: Path, payload: dict) -> None:
     os.replace(temporary, path)
 
 
-def tree_sha256(records: list[dict], root: Path) -> str:
+def selection_identity(records: list[dict], root: Path) -> str:
     digest = hashlib.sha256()
     for row in sorted(records, key=lambda item: item["selected_path"]):
         digest.update(Path(row["selected_path"]).relative_to(root).as_posix().encode())
-        digest.update(bytes.fromhex(row["source_sha256"]))
+        digest.update(row["source_path"].encode())
     return digest.hexdigest()
 
 
@@ -356,7 +356,6 @@ def main() -> None:
 
     manifests = {}
     arm_summaries = {}
-    source_hash_cache = {}
     for arm, classes in arms.items():
         selection_root = args.output_root / "selections" / args.dataset_name / arm
         records = []
@@ -366,9 +365,6 @@ def main() -> None:
                 geometry_row = image_rows[str(source.resolve())]
                 destination = selection_root / geometry_row["class_folder"] / source.name
                 materialize(source, destination, args.link_mode)
-                source_key = str(source.resolve())
-                if source_key not in source_hash_cache:
-                    source_hash_cache[source_key] = sha256(source)
                 records.append(
                     {
                         "class_id": class_id,
@@ -377,7 +373,6 @@ def main() -> None:
                         "selection_role": role,
                         "source_path": str(source.resolve()),
                         "selected_path": str(destination.absolute()),
-                        "source_sha256": source_hash_cache[source_key],
                         "own_centroid_similarity": geometry_row["own_centroid_similarity"],
                         "radial_cosine_distance": geometry_row["radial_cosine_distance"],
                         "nearest_rival_similarity": geometry_row[
@@ -424,7 +419,7 @@ def main() -> None:
             "parent_ipc1_geometry": str(geometry_path.resolve()),
             "recomputed_geometry": False,
             "training_sample_weighting": "equal; both images mixed by the same shuffled loader",
-            "selected_tree_sha256": tree_sha256(records, selection_root),
+            "selected_path_identity_sha256": selection_identity(records, selection_root),
             "materialization": args.link_mode,
             "images": records,
         }

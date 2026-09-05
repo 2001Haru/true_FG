@@ -46,7 +46,7 @@ def main() -> None:
         selection_manifest_sha256=sha256(args.selection_manifest),
         selection_audit=str(args.selection_audit.resolve()),
         selection_audit_sha256=sha256(args.selection_audit),
-        selected_tree_sha256=manifest["selected_tree_sha256"],
+        selected_path_identity_sha256=manifest["selected_path_identity_sha256"],
         parent_ipc1_geometry=manifest["parent_ipc1_geometry"],
         geometry_recomputed=False,
         training_sample_weighting=manifest["training_sample_weighting"],
@@ -59,4 +59,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
