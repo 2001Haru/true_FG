@@ -356,6 +356,7 @@ def main() -> None:
 
     manifests = {}
     arm_summaries = {}
+    source_hash_cache = {}
     for arm, classes in arms.items():
         selection_root = args.output_root / "selections" / args.dataset_name / arm
         records = []
@@ -365,6 +366,9 @@ def main() -> None:
                 geometry_row = image_rows[str(source.resolve())]
                 destination = selection_root / geometry_row["class_folder"] / source.name
                 materialize(source, destination, args.link_mode)
+                source_key = str(source.resolve())
+                if source_key not in source_hash_cache:
+                    source_hash_cache[source_key] = sha256(source)
                 records.append(
                     {
                         "class_id": class_id,
@@ -373,7 +377,7 @@ def main() -> None:
                         "selection_role": role,
                         "source_path": str(source.resolve()),
                         "selected_path": str(destination.absolute()),
-                        "source_sha256": sha256(source),
+                        "source_sha256": source_hash_cache[source_key],
                         "own_centroid_similarity": geometry_row["own_centroid_similarity"],
                         "radial_cosine_distance": geometry_row["radial_cosine_distance"],
                         "nearest_rival_similarity": geometry_row[
@@ -480,4 +484,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
