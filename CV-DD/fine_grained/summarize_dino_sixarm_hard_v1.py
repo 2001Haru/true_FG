@@ -159,13 +159,32 @@ def main() -> None:
                 - global_random[(row["selection_seed"], row["student_seed"])]
                 for row in rows
             ]
-            shell_random["paired_delta_vs_global_random"] = {
+            shell_selection_means = shell_random["final_mean_by_selection_seed"]
+            global_selection_means = {
+                str(seed): statistics.mean(
+                    row["final_top1"]
+                    for row in combined[dataset]["random"]["runs"]
+                    if row["selection_seed"] == seed
+                )
+                for seed in SELECTION_SEEDS
+            }
+            shell_random["comparison_vs_global_random"] = {
+                "design": (
+                    "selection-seed and Student-seed indices aligned, but selection hashes use "
+                    "independent namespaces; not a common-random-number paired selection test"
+                ),
                 "mean": statistics.mean(paired),
                 "sample_std": statistics.stdev(paired),
                 "wins": sum(value > 0 for value in paired),
                 "ties": sum(value == 0 for value in paired),
                 "losses": sum(value < 0 for value in paired),
                 "values": paired,
+                "shell_random_final_mean_by_selection_seed": shell_selection_means,
+                "global_random_final_mean_by_selection_seed": global_selection_means,
+                "selection_seed_mean_deltas": {
+                    str(seed): shell_selection_means[str(seed)] - global_selection_means[str(seed)]
+                    for seed in SELECTION_SEEDS
+                },
             }
             combined[dataset]["shell_random"] = shell_random
     payload = {
@@ -193,4 +212,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
