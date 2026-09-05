@@ -17,6 +17,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parent.parent
 SELECTOR = HERE / "prepare_dino_fourway_ipc1.py"
+SHELL_RANDOM = HERE / "prepare_shell_random_extension.py"
 
 
 def sha256(path: Path) -> str:
@@ -157,6 +158,46 @@ class DinoFourwaySelectionTest(unittest.TestCase):
                 self.assertNotEqual(centroid, rival_facing)
                 self.assertNotEqual(rival_facing, outward)
             self.assertFalse(payload["shell"]["prototype_correctness_filter"])
+            frozen_geometry = audit.read_bytes()
+            extension_audit = root / "shell_random_audit.json"
+            extension_command = [
+                sys.executable,
+                str(SHELL_RANDOM),
+                "--geometry-audit",
+                str(audit),
+                "--selection-base",
+                str(output_root),
+                "--extension-audit",
+                str(extension_audit),
+                "--dataset-name",
+                "fixture",
+                "--classes",
+                "3",
+                "--link-mode",
+                "copy",
+            ]
+            completed = subprocess.run(extension_command, capture_output=True, text=True)
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            self.assertEqual(audit.read_bytes(), frozen_geometry)
+            extension = json.loads(extension_audit.read_text(encoding="utf-8"))
+            self.assertEqual(extension["status"], "complete")
+            self.assertFalse(extension["uses_rival_similarity"])
+            self.assertEqual(len(extension["images"]), 9)
+            self.assertTrue(all(row["in_edge_shell"] for row in extension["images"]))
+            first_extension = extension_audit.read_bytes()
+            completed = subprocess.run(extension_command, capture_output=True, text=True)
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            self.assertEqual(extension_audit.read_bytes(), first_extension)
+            self.assertEqual(audit.read_bytes(), frozen_geometry)
+            for seed in range(3):
+                manifest = json.loads(
+                    (
+                        output_root / "manifests" / f"shell_random_rseed{seed}.json"
+                    ).read_text(encoding="utf-8")
+                )
+                self.assertEqual(manifest["experiment"], "dino_sixarm_ipc1")
+                self.assertEqual(manifest["selection_method"], "shell_random")
+                self.assertEqual(manifest["selection_images"], 3)
 
 
 if __name__ == "__main__":
