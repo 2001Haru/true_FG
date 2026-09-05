@@ -164,10 +164,11 @@ def atomic_json(path: Path, payload: dict) -> None:
     os.replace(temporary, path)
 
 
-def selection_identity(records: list[dict], root: Path) -> str:
+def selection_identity(records: list[dict]) -> str:
     digest = hashlib.sha256()
-    for row in sorted(records, key=lambda item: item["selected_path"]):
-        digest.update(Path(row["selected_path"]).relative_to(root).as_posix().encode())
+    for row in sorted(records, key=lambda item: (item["class_id"], item["source_path"])):
+        digest.update(str(row["class_id"]).encode())
+        digest.update(row["selection_role"].encode())
         digest.update(row["source_path"].encode())
     return digest.hexdigest()
 
@@ -189,7 +190,9 @@ def main() -> None:
     parser.add_argument("--audit-output", required=True, type=Path)
     parser.add_argument("--dataset-name", required=True)
     parser.add_argument("--classes", required=True, type=int)
-    parser.add_argument("--link-mode", choices=("symlink", "copy"), default="symlink")
+    parser.add_argument(
+        "--link-mode", choices=("none", "symlink", "copy"), default="none"
+    )
     args = parser.parse_args()
 
     parent_selection = args.parent_experiment_root / "selections" / args.dataset_name
@@ -364,7 +367,8 @@ def main() -> None:
                 source = Path(source_path)
                 geometry_row = image_rows[str(source.resolve())]
                 destination = selection_root / geometry_row["class_folder"] / source.name
-                materialize(source, destination, args.link_mode)
+                if args.link_mode != "none":
+                    materialize(source, destination, args.link_mode)
                 records.append(
                     {
                         "class_id": class_id,
@@ -372,7 +376,9 @@ def main() -> None:
                         "slot": slot,
                         "selection_role": role,
                         "source_path": str(source.resolve()),
-                        "selected_path": str(destination.absolute()),
+                        "selected_path": (
+                            str(destination.absolute()) if args.link_mode != "none" else None
+                        ),
                         "own_centroid_similarity": geometry_row["own_centroid_similarity"],
                         "radial_cosine_distance": geometry_row["radial_cosine_distance"],
                         "nearest_rival_similarity": geometry_row[
@@ -386,19 +392,20 @@ def main() -> None:
                         **extra,
                     }
                 )
-        actual = {
-            path.relative_to(selection_root).as_posix()
-            for class_dir in selection_root.iterdir()
-            if class_dir.is_dir()
-            for path in class_dir.iterdir()
-            if path.is_file()
-        }
-        expected = {
-            Path(row["selected_path"]).relative_to(selection_root).as_posix()
-            for row in records
-        }
-        if actual != expected or len(actual) != 2 * args.classes:
-            raise RuntimeError(f"ImageFolder audit failed for {arm}")
+        if args.link_mode != "none":
+            actual = {
+                path.relative_to(selection_root).as_posix()
+                for class_dir in selection_root.iterdir()
+                if class_dir.is_dir()
+                for path in class_dir.iterdir()
+                if path.is_file()
+            }
+            expected = {
+                Path(row["selected_path"]).relative_to(selection_root).as_posix()
+                for row in records
+            }
+            if actual != expected or len(actual) != 2 * args.classes:
+                raise RuntimeError(f"ImageFolder audit failed for {arm}")
         method = next(
             method for method in (*STOCHASTIC_METHODS, *DETERMINISTIC_METHODS) if arm.startswith(method)
         )
@@ -415,11 +422,13 @@ def main() -> None:
             "selection_arm": arm,
             "selection_seed": selection_seed,
             "selection_images": 2 * args.classes,
-            "selection_root": str(selection_root.resolve()),
+            "selection_root": (
+                str(selection_root.resolve()) if args.link_mode != "none" else None
+            ),
             "parent_ipc1_geometry": str(geometry_path.resolve()),
             "recomputed_geometry": False,
             "training_sample_weighting": "equal; both images mixed by the same shuffled loader",
-            "selected_path_identity_sha256": selection_identity(records, selection_root),
+            "selected_path_identity_sha256": selection_identity(records),
             "materialization": args.link_mode,
             "images": records,
         }

@@ -78,6 +78,7 @@ def validate_result(
         "primary_metric": "final_update_top1",
         "geometry_recomputed": False,
         "training_sample_weighting": "equal; both images mixed by the same shuffled loader",
+        "train_source_type": "selection_manifest",
         "eval_openblas_num_threads": 1,
     }
     return [
@@ -239,4 +240,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

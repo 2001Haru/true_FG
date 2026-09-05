@@ -46,7 +46,6 @@ case "$STAGE" in
             *) fail "unknown IPC2 arm: $ARM" ;;
         esac
         MANIFEST="$EXP_ROOT/manifests/$DATASET/$ARM.json"
-        SELECTED_DIR="$EXP_ROOT/selections/$DATASET/$ARM"
         RESULT="$EXP_ROOT/results/$DATASET/$ARM/sseed${STUDENT_SEED}.json"
         CHECKPOINT_DIR="$EXP_ROOT/checkpoints/$DATASET/$ARM/sseed${STUDENT_SEED}"
         require_file "$MANIFEST"
@@ -56,7 +55,7 @@ case "$STAGE" in
         flock -n 9 || fail "evaluation already running: $RESULT"
         if [[ ! -f "$RESULT" ]]; then
             python -u "$ROOT_DIR/CV-DD/validate/train_hard_label_v1.py" \
-                --train-dir "$SELECTED_DIR" --val-dir "$DATA_DIR/test" \
+                --train-manifest "$MANIFEST" --val-dir "$DATA_DIR/test" \
                 --dataset-name "$DATASET" --num-classes "$CLASSES" --ipc 2 \
                 --student-seed "$STUDENT_SEED" --result "$RESULT" \
                 --checkpoint-dir "$CHECKPOINT_DIR" \
@@ -75,4 +74,3 @@ case "$STAGE" in
         ;;
     *) fail "unknown stage: $STAGE" ;;
 esac
-

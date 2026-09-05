@@ -45,7 +45,9 @@ from hard_label_v1_protocol import (  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--train-dir", required=True, type=Path)
+    train_source = parser.add_mutually_exclusive_group(required=True)
+    train_source.add_argument("--train-dir", type=Path)
+    train_source.add_argument("--train-manifest", type=Path)
     parser.add_argument("--val-dir", required=True, type=Path)
     parser.add_argument("--dataset-name", required=True)
     parser.add_argument("--num-classes", required=True, type=int)
@@ -249,13 +251,61 @@ def atomic_json(path: Path, payload: dict) -> None:
     os.replace(temporary, path)
 
 
+class ManifestImageDataset(torch.utils.data.Dataset):
+    """ImageFolder-equivalent source list backed by an audited selection manifest."""
+
+    def __init__(self, manifest_path: Path, transform) -> None:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if payload.get("status") != "complete":
+            raise RuntimeError(f"selection manifest is incomplete: {manifest_path}")
+        rows = sorted(
+            payload["images"],
+            key=lambda row: (row["class_folder"], row["source_path"]),
+        )
+        self.classes = sorted({row["class_folder"] for row in rows})
+        self.class_to_idx = {name: index for index, name in enumerate(self.classes)}
+        self.samples = []
+        for row in rows:
+            target = self.class_to_idx[row["class_folder"]]
+            if int(row["class_id"]) != target:
+                raise RuntimeError(
+                    f"manifest class mapping mismatch: {row['source_path']}"
+                )
+            source = Path(row["source_path"])
+            if not source.is_file():
+                raise FileNotFoundError(source)
+            self.samples.append((str(source), target))
+        if len({path for path, _ in self.samples}) != len(self.samples):
+            raise RuntimeError("selection manifest contains duplicate source paths")
+        self.targets = [target for _, target in self.samples]
+        self.transform = transform
+        self.manifest_path = manifest_path.resolve()
+
+    def __len__(self) -> int:
+        return len(self.samples)
+
+    def __getitem__(self, index: int):
+        path, target = self.samples[index]
+        image = datasets.folder.default_loader(path)
+        if self.transform is not None:
+            image = self.transform(image)
+        return image, target
+
+
 def main() -> None:
     args = parse_args()
     seed_everything(args.student_seed)
     device = torch.device("cuda")
     train_transform, validation_transform = make_transforms()
-    train_dataset = datasets.ImageFolder(args.train_dir, transform=train_transform)
     validation_dataset = datasets.ImageFolder(args.val_dir, transform=validation_transform)
+    if args.train_manifest is not None:
+        train_dataset = ManifestImageDataset(args.train_manifest, transform=train_transform)
+        train_source_type = "selection_manifest"
+        train_source = str(args.train_manifest.resolve())
+    else:
+        train_dataset = datasets.ImageFolder(args.train_dir, transform=train_transform)
+        train_source_type = "imagefolder"
+        train_source = str(args.train_dir.resolve())
     if train_dataset.classes != validation_dataset.classes:
         raise RuntimeError("train and validation class folders differ")
     if len(train_dataset.classes) != args.num_classes:
@@ -454,7 +504,12 @@ def main() -> None:
         "final_checkpoint": str(final_checkpoint.resolve()),
         "final_checkpoint_sha256": file_sha256(final_checkpoint),
         "elapsed_seconds": time.time() - started,
-        "train_dir": str(args.train_dir.resolve()),
+        "train_source_type": train_source_type,
+        "train_source": train_source,
+        "train_dir": (str(args.train_dir.resolve()) if args.train_dir is not None else None),
+        "train_manifest": (
+            str(args.train_manifest.resolve()) if args.train_manifest is not None else None
+        ),
         "validation_dir": str(args.val_dir.resolve()),
     }
     atomic_json(args.result, payload)

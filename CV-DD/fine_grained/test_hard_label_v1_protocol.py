@@ -2,12 +2,14 @@
 
 import math
 import json
+import tempfile
 import sys
 import unittest
 from pathlib import Path
 
 import torch
 import torch.nn as nn
+from PIL import Image
 from torchvision import models, transforms
 
 
@@ -25,7 +27,11 @@ from hard_label_v1_protocol import (  # noqa: E402
     TOTAL_UPDATES,
     cosine_lr,
 )
-from train_hard_label_v1 import make_transforms, split_parameter_groups  # noqa: E402
+from train_hard_label_v1 import (  # noqa: E402
+    ManifestImageDataset,
+    make_transforms,
+    split_parameter_groups,
+)
 
 
 class HardLabelV1ProtocolTest(unittest.TestCase):
@@ -86,6 +92,37 @@ class HardLabelV1ProtocolTest(unittest.TestCase):
         self.assertEqual(tuple(spec["input"]["normalization_mean"]), IMAGENET_MEAN)
         self.assertEqual(tuple(spec["input"]["normalization_std"]), IMAGENET_STD)
         self.assertEqual(spec["student"]["weights_file_sha256"], IMAGENET_V1_FILE_SHA256)
+
+    def test_manifest_dataset_matches_imagefolder_class_and_path_order(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            rows = []
+            for class_id, name in enumerate(("a_class", "b_class")):
+                for image_id in (1, 0):
+                    path = root / name / f"image_{image_id}.png"
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    Image.new("RGB", (8, 8), color=(class_id, image_id, 0)).save(path)
+                    rows.append(
+                        {
+                            "class_id": class_id,
+                            "class_folder": name,
+                            "source_path": str(path),
+                        }
+                    )
+            manifest = root / "manifest.json"
+            manifest.write_text(
+                json.dumps({"status": "complete", "images": list(reversed(rows))}),
+                encoding="utf-8",
+            )
+            dataset = ManifestImageDataset(manifest, transform=None)
+            self.assertEqual(dataset.classes, ["a_class", "b_class"])
+            self.assertEqual(
+                [Path(path).name for path, _ in dataset.samples],
+                ["image_0.png", "image_1.png", "image_0.png", "image_1.png"],
+            )
+            image, target = dataset[2]
+            self.assertEqual(image.size, (8, 8))
+            self.assertEqual(target, 1)
 
 
 if __name__ == "__main__":
