@@ -18,6 +18,7 @@ HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parent.parent
 SELECTOR = HERE / "prepare_dino_fourway_ipc1.py"
 SHELL_RANDOM = HERE / "prepare_shell_random_extension.py"
+IPC2_SELECTOR = HERE / "prepare_dino_ipc2_complement.py"
 
 
 def sha256(path: Path) -> str:
@@ -31,7 +32,8 @@ class DinoFourwaySelectionTest(unittest.TestCase):
             data_dir = root / "data"
             cache_dir = root / "cache"
             model_dir = root / "dino"
-            output_root = root / "selection"
+            parent_root = root / "parent"
+            output_root = parent_root / "selections" / "fixture"
             cache_dir.mkdir()
             model_dir.mkdir()
             paths = defaultdict(list)
@@ -96,7 +98,7 @@ class DinoFourwaySelectionTest(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            audit = root / "selection_audit.json"
+            audit = parent_root / "selection_audits" / "fixture.json"
             command = [
                 sys.executable,
                 str(SELECTOR),
@@ -198,6 +200,55 @@ class DinoFourwaySelectionTest(unittest.TestCase):
                 self.assertEqual(manifest["experiment"], "dino_sixarm_ipc1")
                 self.assertEqual(manifest["selection_method"], "shell_random")
                 self.assertEqual(manifest["selection_images"], 3)
+            ipc2_root = root / "ipc2"
+            ipc2_audit = ipc2_root / "selection_audits" / "fixture.json"
+            ipc2_command = [
+                sys.executable,
+                str(IPC2_SELECTOR),
+                "--parent-experiment-root",
+                str(parent_root),
+                "--output-root",
+                str(ipc2_root),
+                "--audit-output",
+                str(ipc2_audit),
+                "--dataset-name",
+                "fixture",
+                "--classes",
+                "3",
+                "--link-mode",
+                "copy",
+            ]
+            completed = subprocess.run(ipc2_command, capture_output=True, text=True)
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            self.assertEqual(audit.read_bytes(), frozen_geometry)
+            ipc2_payload = json.loads(ipc2_audit.read_text(encoding="utf-8"))
+            self.assertEqual(ipc2_payload["status"], "complete")
+            self.assertEqual(len(ipc2_payload["manifests"]), 16)
+            self.assertEqual(ipc2_payload["center_collisions"], [])
+            self.assertEqual(ipc2_payload["duplicate_pairs"], [])
+            for manifest_path in ipc2_payload["manifests"].values():
+                manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+                self.assertEqual(manifest["ipc"], 2)
+                self.assertEqual(manifest["selection_images"], 6)
+                by_class = {}
+                for row in manifest["images"]:
+                    by_class.setdefault(row["class_id"], []).append(row["source_path"])
+                self.assertTrue(all(len(paths) == len(set(paths)) == 2 for paths in by_class.values()))
+            for arm in (
+                "center_plus_outward",
+                "center_plus_high_margin",
+                "center_plus_rival_facing",
+                "center_plus_random_rseed0",
+                "center_plus_shell_random_rseed0",
+            ):
+                manifest = json.loads(
+                    (ipc2_root / "manifests" / "fixture" / f"{arm}.json").read_text()
+                )
+                centers = [
+                    row for row in manifest["images"] if row["selection_role"] == "fixed_ipc1_center"
+                ]
+                if arm.startswith("center_plus_"):
+                    self.assertEqual(len(centers), 3)
 
 
 if __name__ == "__main__":
