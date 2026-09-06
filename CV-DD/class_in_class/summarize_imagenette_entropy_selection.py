@@ -6,7 +6,15 @@ import os
 import statistics
 from pathlib import Path
 
-from imagenette_entropy_protocol import SELECTION_SEEDS, STUDENT_SEEDS, atomic_json
+SELECTION_SEEDS = (0, 1, 2)
+STUDENT_SEEDS = (42, 43, 44)
+
+
+def atomic_json(path, payload):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
 
 
 def stats(values):

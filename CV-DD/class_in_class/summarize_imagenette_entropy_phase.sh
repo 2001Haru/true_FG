@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION="${PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION:-python}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PHASE="${1:?usage: summarize_imagenette_entropy_phase.sh endpoints|full}"
@@ -19,4 +20,3 @@ done
 mkdir -p "$(dirname "$OUTPUT")"
 python "$ROOT/class_in_class/summarize_imagenette_entropy_selection.py" \
     --experiment-root "$EXP_ROOT" --lambdas "${LAMBDAS[@]}" --output "$OUTPUT"
-
