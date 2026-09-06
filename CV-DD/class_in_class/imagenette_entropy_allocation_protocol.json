@@ -1,0 +1,33 @@
+{
+  "name": "imagenette_entropy_allocation_v1",
+  "dataset": "ImageNette official train/test",
+  "parent_experiment": "imagenette_entropy_selection_v1",
+  "within_manifest_experiment": {
+    "images": "exact lambda=0 manifests for selection seeds 0,1,2",
+    "split": "within each true class, bottom/top five by frozen calibration entropy; relative path tie-break",
+    "new_conditions": {
+      "high_entropy_soft1": "top five Soft-1, bottom five Hard",
+      "low_entropy_soft1": "top five Hard, bottom five Soft-1"
+    },
+    "existing_conditions": {
+      "hard": "all Hard",
+      "soft1": "all Soft-1"
+    },
+    "loss_reduction": "sum per-sample assigned CE losses, then divide by current actual batch size"
+  },
+  "highest_entropy_top10_experiment": {
+    "images": "deterministic top ten calibration-entropy images within each true class",
+    "conditions": ["hard", "soft1"],
+    "student_seeds": [42, 43, 44]
+  },
+  "shared_training": {
+    "student_and_optimization": "identical to imagenette_entropy_high_lambda_v1",
+    "epochs": 2000,
+    "optimizer_updates": 4000,
+    "evaluation_epochs": [200, 400, 600, 800, 1000, 1200, 1333, 1400, 1600, 1666, 1800, 2000],
+    "primary_metric": "Final Top-1 at epoch2000/update4000",
+    "teacher_temperature": 1.0,
+    "student_temperature": 1.0,
+    "cutmix_mixup": false
+  }
+}
