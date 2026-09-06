@@ -33,5 +33,13 @@ The pre-registered middle phase cannot start until both endpoint shards are comp
   bash CV-DD/class_in_class/imagenette_entropy_node_queue.sh middle 1
   bash CV-DD/class_in_class/summarize_imagenette_entropy_phase.sh full
 
+For unattended continuation, launch this once on each node after the endpoint queues are stable:
+
+  bash CV-DD/class_in_class/imagenette_entropy_auto_continue.sh 0
+  bash CV-DD/class_in_class/imagenette_entropy_auto_continue.sh 1
+
+It waits for both endpoint status files, summarizes them, launches the pre-registered middle shard
+without inspecting accuracy, and writes the full 90-result summary after both middle shards finish.
+
 Each node defaults to two GPUs, two concurrent evaluations per GPU, and four DataLoader workers per
 evaluation. Results are protected by per-result locks and node-specific queue locks.
