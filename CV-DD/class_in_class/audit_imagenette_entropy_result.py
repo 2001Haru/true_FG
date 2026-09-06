@@ -35,14 +35,21 @@ def main():
     parser.add_argument("--selection-seed", required=True, type=int)
     parser.add_argument("--student-seed", required=True, type=int)
     parser.add_argument("--supervision", choices=("hard", "soft1", "kd4"), required=True)
+    parser.add_argument("--protocol-name", default="imagenette_entropy_selection_v1")
+    parser.add_argument("--protocol-spec", type=Path)
+    parser.add_argument("--expected-eval-epochs", nargs="+", type=int)
     args = parser.parse_args()
     payload = json.loads(args.result.read_text(encoding="utf-8"))
-    protocol_spec = Path(__file__).resolve().with_name(
-        "imagenette_entropy_selection_protocol.json"
+    protocol_spec = (
+        args.protocol_spec.resolve()
+        if args.protocol_spec is not None
+        else Path(__file__).resolve().with_name(
+            "imagenette_entropy_selection_protocol.json"
+        )
     )
     expected = {
         "status": "complete",
-        "protocol": "imagenette_entropy_selection_v1",
+        "protocol": args.protocol_name,
         "protocol_spec_sha256": file_sha256(protocol_spec),
         "dataset": "imagenet-nette",
         "classes": CLASSES,
@@ -104,7 +111,13 @@ def main():
     if payload.get("temperature_squared_multiplier") != (args.supervision == "kd4"):
         errors.append("T-squared multiplier mismatch")
     history = payload.get("test_history", [])
-    expected_epochs = list(range(EVAL_EVERY_EPOCHS, TRAIN_EPOCHS + 1, EVAL_EVERY_EPOCHS))
+    expected_epochs = (
+        sorted(args.expected_eval_epochs)
+        if args.expected_eval_epochs is not None
+        else list(range(EVAL_EVERY_EPOCHS, TRAIN_EPOCHS + 1, EVAL_EVERY_EPOCHS))
+    )
+    if payload.get("evaluation_epochs", expected_epochs) != expected_epochs:
+        errors.append("recorded evaluation epochs mismatch")
     if [row.get("epoch") for row in history] != expected_epochs:
         errors.append("test history cadence mismatch")
     for row in history:

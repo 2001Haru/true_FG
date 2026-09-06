@@ -144,11 +144,39 @@ def main():
     parser.add_argument("--batch-size", default=BATCH_SIZE, type=int)
     parser.add_argument("--epochs", default=TRAIN_EPOCHS, type=int)
     parser.add_argument("--eval-every-epochs", default=EVAL_EVERY_EPOCHS, type=int)
+    parser.add_argument("--eval-epochs", nargs="+", type=int)
+    parser.add_argument("--protocol-name", default="imagenette_entropy_selection_v1")
+    parser.add_argument(
+        "--protocol-spec",
+        type=Path,
+        default=Path(__file__).resolve().with_name(
+            "imagenette_entropy_selection_protocol.json"
+        ),
+    )
     args = parser.parse_args()
     if args.batch_size != BATCH_SIZE or args.epochs != TRAIN_EPOCHS:
         raise RuntimeError("frozen protocol requires batch64 and 2000 epochs")
-    if args.eval_every_epochs <= 0 or args.epochs % args.eval_every_epochs:
-        raise RuntimeError("evaluation interval must divide 2000 epochs")
+    if args.eval_epochs is None:
+        if args.eval_every_epochs <= 0 or args.epochs % args.eval_every_epochs:
+            raise RuntimeError("evaluation interval must divide 2000 epochs")
+        evaluation_epochs = list(
+            range(args.eval_every_epochs, args.epochs + 1, args.eval_every_epochs)
+        )
+    else:
+        evaluation_epochs = sorted(set(args.eval_epochs))
+        if (
+            len(evaluation_epochs) != len(args.eval_epochs)
+            or not evaluation_epochs
+            or evaluation_epochs[-1] != args.epochs
+            or any(epoch <= 0 or epoch > args.epochs for epoch in evaluation_epochs)
+        ):
+            raise RuntimeError(
+                "explicit evaluation epochs must be unique, valid, and include epoch2000"
+            )
+    evaluation_epoch_set = set(evaluation_epochs)
+    protocol_spec = args.protocol_spec.resolve()
+    if not protocol_spec.is_file():
+        raise RuntimeError(f"missing protocol specification: {protocol_spec}")
     seed_everything(identity_seed("imagenette-training-global-v1", args.student_seed))
     device = torch.device("cuda")
 
@@ -240,6 +268,7 @@ def main():
     updates = 0
     best_top1 = float("-inf")
     best_epoch = None
+    final_metrics = None
     started = time.time()
     for epoch in range(1, args.epochs + 1):
         train_dataset.set_epoch(epoch)
@@ -298,8 +327,10 @@ def main():
             raise RuntimeError(f"expected actual batch sizes [64,36], found {epoch_batch_sizes}")
         if epoch_examples != TRAIN_SIZE or updates != 2 * epoch:
             raise RuntimeError("IPC10 epoch/update cardinality changed")
-        if epoch % args.eval_every_epochs == 0:
+        if epoch in evaluation_epoch_set:
             metrics = validate(student, test_loader, device)
+            if epoch == TRAIN_EPOCHS:
+                final_metrics = metrics
             record = {
                 "epoch": epoch,
                 "update": updates,
@@ -321,14 +352,17 @@ def main():
                 best_epoch = epoch
             print(json.dumps(record, sort_keys=True), flush=True)
 
-    if updates != TOTAL_UPDATES or history[-1]["epoch"] != TRAIN_EPOCHS:
+    if (
+        updates != TOTAL_UPDATES
+        or history[-1]["epoch"] != TRAIN_EPOCHS
+        or final_metrics is None
+    ):
         raise RuntimeError("training did not reach Final@4000")
-    final_metrics = validate(student, test_loader, device)
     args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
     checkpoint = args.checkpoint_dir / "final.pth.tar"
     torch.save(
         {
-            "protocol": "imagenette_entropy_selection_v1",
+            "protocol": args.protocol_name,
             "supervision": args.supervision,
             "student_seed": args.student_seed,
             "epoch": TRAIN_EPOCHS,
@@ -339,13 +373,10 @@ def main():
         checkpoint,
     )
     manifest = train_dataset.manifest
-    protocol_spec = Path(__file__).resolve().with_name(
-        "imagenette_entropy_selection_protocol.json"
-    )
     student_source = Path(__file__).resolve().parents[2] / "CoDA" / "test" / "resnet_ap.py"
     payload = {
         "status": "complete",
-        "protocol": "imagenette_entropy_selection_v1",
+        "protocol": args.protocol_name,
         "protocol_spec": str(protocol_spec.resolve()),
         "protocol_spec_sha256": file_sha256(protocol_spec),
         "dataset": "imagenet-nette",
@@ -402,6 +433,8 @@ def main():
             "kd4": "16_times_KL_teacher_to_student_batchmean",
         }[args.supervision],
         "primary_metric": "final_top1_at_update_4000",
+        "evaluation_epochs": evaluation_epochs,
+        "evaluation_count": len(evaluation_epochs),
         "final_top1": final_metrics["top1"],
         "final_loss": final_metrics["loss"],
         "best_top1_diagnostic": best_top1,

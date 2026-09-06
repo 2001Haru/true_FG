@@ -1,0 +1,23 @@
+{
+  "name": "imagenette_entropy_high_lambda_v1",
+  "parent_experiment": "imagenette_entropy_selection_v1",
+  "dataset": "ImageNette official train/test",
+  "selection": {
+    "images_per_class": 10,
+    "lambdas": [8, 16, 32],
+    "selection_seeds": [0, 1, 2],
+    "sampling": "exact parent identity-keyed Gumbel top-k over the full true-class pool",
+    "statistics": "exact reuse of parent 16 calibration and 16 independent holdout views"
+  },
+  "training": {
+    "student_and_optimization": "identical to imagenette_entropy_selection_v1",
+    "supervision": ["hard", "soft1"],
+    "student_seeds": [42, 43, 44],
+    "epochs": 2000,
+    "optimizer_updates": 4000,
+    "evaluation_epochs": [200, 400, 600, 800, 1000, 1200, 1333, 1400, 1600, 1666, 1800, 2000],
+    "evaluation_updates": [400, 800, 1200, 1600, 2000, 2400, 2666, 2800, 3200, 3332, 3600, 4000],
+    "primary_metric": "Final Top-1 at epoch2000/update4000",
+    "best": "diagnostic over the 12 registered evaluations only"
+  }
+}
