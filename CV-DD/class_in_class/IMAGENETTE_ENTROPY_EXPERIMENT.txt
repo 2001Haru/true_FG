@@ -1,0 +1,37 @@
+ImageNette entropy-biased IPC10 experiment
+===========================================
+
+The experiment is frozen by imagenette_entropy_selection_protocol.json.
+
+Preparation computes 16 deterministic calibration views and 16 independent holdout views for every
+official ImageNette training image, extracts the fixed C1 Teacher's T=1 statistics, joins the existing
+DINOv2 geometry, builds all 15 selection manifests, and renders one 10-by-10 contact sheet per arm.
+It deliberately does not approve its own visual audit.
+
+  bash CV-DD/class_in_class/prepare_imagenette_entropy_experiment.sh
+
+After reviewing preflight/selection_preflight.json, the per-image audit, and all contact sheets,
+create preflight/manual_visual_gate.json with this schema:
+
+  {
+    "approved": true,
+    "preflight_file": "/absolute/path/to/preflight/selection_preflight.json",
+    "teacher_checkpoint_sha256": "copied from selection_preflight.json",
+    "reviewer": "name or experiment-owner identifier",
+    "notes": "observations about missing subjects, occlusion, background dominance, and label anomalies"
+  }
+
+Endpoint phase (lambda=-4,0,+4), one command on each two-GPU node:
+
+  bash CV-DD/class_in_class/imagenette_entropy_node_queue.sh endpoints 0
+  bash CV-DD/class_in_class/imagenette_entropy_node_queue.sh endpoints 1
+  bash CV-DD/class_in_class/summarize_imagenette_entropy_phase.sh endpoints
+
+The pre-registered middle phase cannot start until both endpoint shards are complete:
+
+  bash CV-DD/class_in_class/imagenette_entropy_node_queue.sh middle 0
+  bash CV-DD/class_in_class/imagenette_entropy_node_queue.sh middle 1
+  bash CV-DD/class_in_class/summarize_imagenette_entropy_phase.sh full
+
+Each node defaults to two GPUs, two concurrent evaluations per GPU, and four DataLoader workers per
+evaluation. Results are protected by per-result locks and node-specific queue locks.

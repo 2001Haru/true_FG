@@ -1,0 +1,62 @@
+{
+  "name": "imagenette_entropy_selection_v1",
+  "dataset": {
+    "name": "ImageNette",
+    "train_images": 9469,
+    "test_images": 3925,
+    "classes": 10,
+    "ipc": 10
+  },
+  "selection": {
+    "teacher_temperature": 1.0,
+    "calibration_views_per_image": 16,
+    "holdout_views_per_image": 16,
+    "entropy_definition": "mean of per-view entropy divided by log(10)",
+    "percentile_definition": "average tie rank divided by class_size-1; values lie in [0,1], but ties may prevent attaining either endpoint; no min-max stretching",
+    "lambdas": [-4, -2, 0, 2, 4],
+    "selection_seeds": [0, 1, 2],
+    "sampling": "identity-keyed shared Gumbel top-k without replacement",
+    "images_per_class": 10,
+    "loss_weighting_after_selection": "equal"
+  },
+  "student": {
+    "model": "CoDA released ResNetAP-10",
+    "initialization": "random",
+    "normalization_layer": "GroupNorm(C,C), called instance in released code",
+    "student_seeds": [42, 43, 44]
+  },
+  "optimization": {
+    "optimizer": "SGD",
+    "lr": 0.01,
+    "momentum": 0.9,
+    "weight_decay": 0.0005,
+    "weight_decay_exclusions": [],
+    "batch_size": 64,
+    "gradient_accumulation": 1,
+    "drop_last": false,
+    "epochs": 2000,
+    "updates": 4000,
+    "lr_milestones_after_epochs": [1333, 1666],
+    "lr_gamma": 0.2,
+    "warmup": false,
+    "cutmix": false,
+    "mixup": false,
+    "label_smoothing": 0.0
+  },
+  "augmentation": {
+    "train": "ResizeShorter256(bilinear,antialias)->CenterCrop256->RandomResizedCrop256(scale=0.5..1,ratio=0.75..1.333,bilinear,antialias)->HorizontalFlip(0.5)->ColorJitter(brightness/contrast/saturation=0.4)->AlexNetLighting(0.1)->ImageNetNormalize",
+    "test": "ResizeShorter256(bilinear,antialias)->CenterCrop256->ImageNetNormalize",
+    "tensor_boundary": "after CenterCrop: RGB float32 Tensor in [0,1], before RRC",
+    "paired_randomness": "SHA-256 namespace x student_seed x epoch x image identity; does not reset global RNG"
+  },
+  "supervision": {
+    "hard": "ordinary mean CE against true class",
+    "soft1": "ordinary mean soft-target CE; teacher T=1 and student T=1",
+    "kd4_reserved": "16 * KL(softmax(teacher/4) || softmax(student/4)), batchmean",
+    "teacher": "one fixed C1 ResNet18 checkpoint; eval, frozen, no_grad; same augmented pixels as student"
+  },
+  "metrics": {
+    "primary": "Final Top-1 at update 4000",
+    "diagnostic": "Best test Top-1 sampled every 20 epochs"
+  }
+}
