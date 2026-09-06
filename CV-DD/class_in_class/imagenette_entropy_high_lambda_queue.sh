@@ -21,9 +21,9 @@ p=Path(sys.argv[1]); x={'status':sys.argv[2],'exit_code':int(sys.argv[3]),'updat
 PY
 }
 on_exit(){ code=$?; (( code == 0 )) || write_status failed "$code"; }
-trap on_exit EXIT
 exec 9>"$LOCK_ROOT/high_lambda_node${NODE_INDEX}.lock"
 flock -n 9 || { echo "high-lambda queue already active for this node shard" >&2; exit 1; }
+trap on_exit EXIT
 write_status running 0
 
 wait_wave(){ local failed=0 pid; for pid in "$@"; do wait "$pid" || failed=1; done; (( failed == 0 )); }
@@ -62,4 +62,3 @@ if [[ "$NODE_INDEX" == 0 ]]; then
       --output "$EXP_ROOT/summary/extended_full.json" \
       >"$EXP_ROOT/logs/high_lambda_summary.log" 2>&1
 fi
-
