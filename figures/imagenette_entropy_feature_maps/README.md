@@ -28,4 +28,7 @@ Files:
 - `C_class_*.{png,pdf}`: readable per-class representative strips.
 - `pca_coordinates_and_entropy.npz`: plotted coordinates, entropy, predictions, correctness, and PCA metadata.
 - `figure_metadata.json`: input/output hashes, explained variance, class medians, error counts, and exact representative-image paths.
-
+- `D1_tsne_class_and_entropy_p99.{png,pdf}`: all 9,469 images in one shared DINO PCA50 + t-SNE coordinate system; left is true class and right is Teacher entropy clipped at the global P99 (`0.28642`).
+- `D2_tsne_class_and_entropy_full_range.{png,pdf}`: identical coordinates and class panel, with entropy shown on the fixed full `[0,1]` scale.
+- `tsne_coordinates.npz`: PCA50 representation and t-SNE coordinates for seeds 0/1/2; seed 0 is the displayed coordinate set.
+- `tsne_metadata.json`: frozen t-SNE parameters, input hashes, entropy color ranges, trustworthiness, and cross-seed neighborhood stability.
