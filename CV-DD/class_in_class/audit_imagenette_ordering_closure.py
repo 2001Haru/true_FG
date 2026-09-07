@@ -487,6 +487,9 @@ def main():
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
+    # DataLoader workers provide the parallelism.  Prevent every worker and the
+    # two audit shards from each creating a full OpenMP thread team.
+    torch.set_num_threads(1)
     args.experiment_root = args.experiment_root.resolve()
     args.data_root = args.data_root.resolve()
     args.output_root = args.output_root.resolve()
@@ -499,17 +502,23 @@ def main():
     if args.phase == "templates":
         compute_template_stability(args, teacher, templates)
         return
-    test_dataset = datasets.ImageFolder(args.data_root / "test")
+    test_dataset = datasets.ImageFolder(args.data_root / "test", transform=test_transform)
     if len(test_dataset) != TEST_IMAGES:
         raise RuntimeError("not the official ImageNette test split")
     print("caching deterministic test tensors", flush=True)
     test_images = []
-    for index, (path, _) in enumerate(test_dataset.samples):
-        with Image.open(path) as image:
-            test_images.append(test_transform(image))
-        if index % 500 == 0:
-            print(f"test tensors {index + 1}/{len(test_dataset)}", flush=True)
-    test_images = torch.stack(test_images).pin_memory()
+    cache_loader = DataLoader(
+        test_dataset, batch_size=256, shuffle=False, num_workers=args.workers,
+        persistent_workers=False, pin_memory=False,
+        prefetch_factor=2 if args.workers > 0 else None,
+    )
+    for batch_index, (images, _) in enumerate(cache_loader):
+        test_images.append(images)
+        print(
+            f"test tensors {min((batch_index + 1) * 256, len(test_dataset))}/{len(test_dataset)}",
+            flush=True,
+        )
+    test_images = torch.cat(test_images).pin_memory()
     test_targets = np.asarray(test_dataset.targets, dtype=np.int64)
     for manifest_seed in map(int, args.manifest_seeds.split(",")):
         for student_seed in PAIRS[manifest_seed]:
