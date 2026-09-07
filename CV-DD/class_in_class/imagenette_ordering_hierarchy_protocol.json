@@ -1,0 +1,59 @@
+{
+  "name": "imagenette_ordering_hierarchy_v1",
+  "question": "With every view's probability multiset fixed, which class identities should receive the non-target values?",
+  "dataset": "ImageNette official train/test",
+  "selection": {
+    "rule": "lambda=0 identity-keyed Gumbel Top10 per true class",
+    "new_manifest_seeds": [3, 4, 5, 6, 7, 8, 9, 10, 11],
+    "high_low_split": "within each selected true class, top/bottom five by the frozen calibration entropy"
+  },
+  "templates": {
+    "views_per_high_entropy_image": 64,
+    "namespace": "imagenette-ordering-template-view-v1",
+    "image_template": "equal mean of 64 conditional non-target distributions",
+    "class_template": "equal mean of the five current-manifest high-entropy image templates; includes the image itself",
+    "leave_one_image_out": false,
+    "stability": "compare rankings estimated from template views 0:32 versus 32:64"
+  },
+  "arms": {
+    "O": "current-image current-view original Soft-1 on high five; Hard on low five",
+    "B": "current-view sorted non-target spectrum assigned by one fixed image-template ordering; Hard on low five",
+    "A": "current-view sorted non-target spectrum assigned by one fixed current-manifest class-template ordering; Hard on low five",
+    "Aprime": "inverse of the current-view permutation that maps O to A; Hard on low five"
+  },
+  "invariants": [
+    "true-class probability and total non-target mass",
+    "complete non-target probability multiset",
+    "Shannon entropy and order-2 effective class count",
+    "EL2N distance to the true one-hot target",
+    "maximum probability and top-2 total mass",
+    "Teacher prediction correctness, but not the identity of an incorrect argmax"
+  ],
+  "training": {
+    "student": "CoDA released ResNetAP-10 random initialization with channelwise GroupNorm",
+    "image_size": 256,
+    "optimizer": "SGD lr=0.01 momentum=0.9 weight_decay=0.0005 on all parameters",
+    "batch_size": 64,
+    "epochs": 2000,
+    "optimizer_updates": 4000,
+    "lr_milestones_after_epochs": [1333, 1666],
+    "lr_gamma": 0.2,
+    "teacher_temperature": 1.0,
+    "student_temperature": 1.0,
+    "evaluation_epochs": [200, 400, 600, 800, 1000, 1200, 1333, 1400, 1600, 1666, 1800, 2000],
+    "primary_metric": "official-test true-label NLL at Final@4000",
+    "secondary_metric": "official-test Top-1 at Final@4000"
+  },
+  "student_pairs": {
+    "3": [42, 43], "4": [43, 44], "5": [42, 44],
+    "6": [42, 43], "7": [43, 44], "8": [42, 44],
+    "9": [42, 43], "10": [43, 44], "11": [42, 44]
+  },
+  "analysis": {
+    "independent_unit": "manifest",
+    "within_manifest": "average the two Student seeds",
+    "fixed_blocks": "three Student-seed pairs, each used by three manifests",
+    "primary": "Delta_control = L_Aprime - L_A",
+    "secondary": ["Delta_view = L_B - L_O", "Delta_image = L_A - L_B"]
+  }
+}
