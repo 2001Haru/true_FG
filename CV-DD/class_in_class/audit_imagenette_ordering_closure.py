@@ -240,7 +240,7 @@ def rank_metrics(first_order, second_order, target):
 
 
 def distribution(values):
-    values = np.asarray(values, dtype=np.float64)
+    values = np.asarray(list(values), dtype=np.float64)
     return {
         "mean": float(values.mean()), "sample_std": float(values.std(ddof=1)),
         "min": float(values.min()), "median": float(np.median(values)), "max": float(values.max()),
