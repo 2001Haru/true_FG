@@ -425,6 +425,54 @@ def assemble(args):
         "pearson_off_diagonal": {"r": float(pearsonr(target_delta[mask], confusion_delta[mask]).statistic), "p": float(pearsonr(target_delta[mask], confusion_delta[mask]).pvalue)},
         "spearman_off_diagonal": {"rho": float(spearmanr(target_delta[mask], confusion_delta[mask]).statistic), "p": float(spearmanr(target_delta[mask], confusion_delta[mask]).pvalue)},
     }
+    manifest_error_rows = []
+    manifest_relations = []
+    for manifest_seed, student_pair in PAIRS.items():
+        group = [cache for cache in caches if int(cache["manifest_seed"]) == manifest_seed]
+        grouped_ranks = {
+            key: np.sum([np.asarray(cache["template_rank_error_counts"][key], dtype=np.int64) for cache in group], axis=0)
+            for key in rank_counts
+        }
+        grouped_summary = {key: rank_summary(value) for key, value in grouped_ranks.items()}
+        contrasts = {
+            "A_added_minus_Aprime_added_top1_fraction": grouped_summary["A_added"]["top1_fraction"] - grouped_summary["Aprime_added"]["top1_fraction"],
+            "A_added_minus_Aprime_added_top3_fraction": grouped_summary["A_added"]["top3_fraction"] - grouped_summary["Aprime_added"]["top3_fraction"],
+            "A_added_minus_Aprime_added_mean_rank": grouped_summary["A_added"]["mean_rank"] - grouped_summary["Aprime_added"]["mean_rank"],
+        }
+        manifest_error_rows.append({
+            "manifest_seed": manifest_seed, "student_pair": list(student_pair),
+            "rank_summaries": grouped_summary, "contrasts": contrasts,
+        })
+        matrix_a = np.mean([np.asarray(cache["target_matrices"]["A"]) for cache in group], axis=0)
+        matrix_p = np.mean([np.asarray(cache["target_matrices"]["Aprime"]) for cache in group], axis=0)
+        confusion_a = np.sum([np.asarray(cache["test_confusion_counts"]["A"]) for cache in group], axis=0)
+        confusion_p = np.sum([np.asarray(cache["test_confusion_counts"]["Aprime"]) for cache in group], axis=0)
+        counts = np.sum([np.asarray(cache["test_class_counts"]) for cache in group], axis=0)
+        x = (matrix_a - matrix_p)[mask]
+        y = (confusion_a / counts[:, None] - confusion_p / counts[:, None])[mask]
+        manifest_relations.append({
+            "manifest_seed": manifest_seed,
+            "pearson_r": float(pearsonr(x, y).statistic),
+            "spearman_rho": float(spearmanr(x, y).statistic),
+        })
+    error_flow_blocked = {
+        key: block_adjusted(manifest_error_rows, key)
+        for key in manifest_error_rows[0]["contrasts"]
+    }
+    dominant_pairs = []
+    for class_id in range(CLASSES):
+        row = target_delta[class_id].copy()
+        row[class_id] = -np.inf
+        competitor = int(np.argmax(row))
+        dominant_pairs.append({
+            "true_class": class_id, "true_class_name": CLASS_NAMES[class_id],
+            "A_favored_competitor": competitor, "competitor_name": CLASS_NAMES[competitor],
+            "A_minus_Aprime_target_probability": float(target_delta[class_id, competitor]),
+            "A_minus_Aprime_test_confusion_rate": float(confusion_delta[class_id, competitor]),
+            "O_target_probability": float(matrices["O"][class_id, competitor]),
+            "A_target_probability": float(matrices["A"][class_id, competitor]),
+            "Aprime_target_probability": float(matrices["Aprime"][class_id, competitor]),
+        })
     summary = json.loads((args.experiment_root / "summary/ordering_hierarchy.json").read_text(encoding="utf-8"))
     manifest_rows = summary["manifest_rows"]
     for row in manifest_rows:
@@ -453,6 +501,10 @@ def assemble(args):
             "A_minus_Aprime_target_drift": target_delta.tolist(),
             "target_drift_vs_confusion_delta": relation,
             "template_rank_error_flow": {key: rank_summary(value) for key, value in rank_counts.items()},
+            "manifest_level_template_rank_error_flow": manifest_error_rows,
+            "template_rank_error_flow_blocked_inference": error_flow_blocked,
+            "target_drift_vs_confusion_delta_by_manifest": manifest_relations,
+            "dominant_A_target_drift_pair_by_true_class": dominant_pairs,
         },
         "Aprime_vs_O_blocked_inference": aprime_o,
         "template_half_stability": template_stability,
