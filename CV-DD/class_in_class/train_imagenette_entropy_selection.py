@@ -42,7 +42,7 @@ from imagenette_entropy_protocol import (
 
 
 class PairedManifestDataset(Dataset):
-    def __init__(self, manifest_path: Path):
+    def __init__(self, manifest_path: Path, permutation_file: Path | None = None):
         self.manifest_path = manifest_path.resolve()
         self.manifest = json.loads(self.manifest_path.read_text(encoding="utf-8"))
         if (
@@ -76,6 +76,30 @@ class PairedManifestDataset(Dataset):
         if len(high_entropy_paths) != TRAIN_SIZE // 2:
             raise RuntimeError("expected exactly five high-entropy images per class")
         self.high_entropy_paths = high_entropy_paths
+        identity = list(range(CLASSES))
+        self.probability_permutations = {
+            row["relative_path"]: identity for row in rows
+        }
+        if permutation_file is not None:
+            permutation_payload = json.loads(
+                permutation_file.resolve().read_text(encoding="utf-8")
+            )
+            if permutation_payload.get("status") != "complete":
+                raise RuntimeError("non-target permutation file is incomplete")
+            mappings = permutation_payload.get("permutations", {})
+            for row in rows:
+                relative_path = row["relative_path"]
+                if relative_path not in mappings:
+                    raise RuntimeError(f"missing probability permutation: {relative_path}")
+                mapping = list(map(int, mappings[relative_path]["output_class_takes_input_class"]))
+                target = int(row["class_id"])
+                if (
+                    sorted(mapping) != identity
+                    or mapping[target] != target
+                    or any(mapping[index] == index for index in range(CLASSES) if index != target)
+                ):
+                    raise RuntimeError(f"invalid non-target derangement: {relative_path}")
+                self.probability_permutations[relative_path] = mapping
         self.rows = rows
         self.epoch = torch.zeros((), dtype=torch.int64).share_memory_()
         self.view = DeterministicReleasedView()
@@ -101,6 +125,10 @@ class PairedManifestDataset(Dataset):
             tensor,
             int(row["class_id"]),
             row["relative_path"] in self.high_entropy_paths,
+            torch.tensor(
+                self.probability_permutations[row["relative_path"]],
+                dtype=torch.long,
+            ),
         )
 
     def bind_student_seed(self, student_seed: int):
@@ -181,7 +209,15 @@ def main():
     parser.add_argument("--teacher-checkpoint", required=True, type=Path)
     parser.add_argument(
         "--supervision",
-        choices=("hard", "soft1", "kd4", "high_entropy_soft1", "low_entropy_soft1"),
+        choices=(
+            "hard",
+            "soft1",
+            "kd4",
+            "high_entropy_soft1",
+            "low_entropy_soft1",
+            "high_entropy_permuted_soft1",
+            "low_entropy_permuted_soft1",
+        ),
         required=True,
     )
     parser.add_argument("--student-seed", choices=STUDENT_SEEDS, required=True, type=int)
@@ -193,6 +229,7 @@ def main():
     parser.add_argument("--eval-every-epochs", default=EVAL_EVERY_EPOCHS, type=int)
     parser.add_argument("--eval-epochs", nargs="+", type=int)
     parser.add_argument("--protocol-name", default="imagenette_entropy_selection_v1")
+    parser.add_argument("--non-target-permutation-file", type=Path)
     parser.add_argument(
         "--protocol-spec",
         type=Path,
@@ -235,7 +272,18 @@ def main():
         student = build_student()
     initial_student_sha256 = state_dict_sha256(student.state_dict())
 
-    train_dataset = PairedManifestDataset(args.train_manifest)
+    permuted_supervision = args.supervision in (
+        "high_entropy_permuted_soft1",
+        "low_entropy_permuted_soft1",
+    )
+    if permuted_supervision != (args.non_target_permutation_file is not None):
+        raise RuntimeError(
+            "a frozen non-target permutation file is required only for permuted Soft-1 arms"
+        )
+    train_dataset = PairedManifestDataset(
+        args.train_manifest,
+        args.non_target_permutation_file,
+    )
     train_dataset.bind_student_seed(args.student_seed)
     test_dataset = datasets.ImageFolder(args.test_dir.resolve(), transform=test_transform)
     if len(test_dataset) != TEST_IMAGES or len(test_dataset.classes) != CLASSES:
@@ -312,6 +360,16 @@ def main():
         "argmax_matches_true_class": 0.0,
     }
     teacher_views = 0
+    permutation_invariant_audit = {
+        "views": 0,
+        "batches": 0,
+        "max_abs_entropy_delta": 0.0,
+        "max_abs_true_probability_delta": 0.0,
+        "max_abs_maximum_probability_delta": 0.0,
+        "max_abs_onehot_l1_delta": 0.0,
+        "max_abs_onehot_l2_delta": 0.0,
+        "argmax_correctness_mismatches": 0,
+    }
     updates = 0
     best_top1 = float("-inf")
     best_epoch = None
@@ -326,10 +384,11 @@ def main():
         epoch_loss_sum = 0.0
         epoch_examples = 0
         epoch_batch_sizes = []
-        for raw_views, true_targets, high_entropy_group in train_loader:
+        for raw_views, true_targets, high_entropy_group, probability_permutation in train_loader:
             raw_views = raw_views.to(device, non_blocking=True)
             true_targets = true_targets.to(device, non_blocking=True)
             high_entropy_group = high_entropy_group.to(device, non_blocking=True).bool()
+            probability_permutation = probability_permutation.to(device, non_blocking=True)
             images = normalize(raw_views)
             optimizer.zero_grad(set_to_none=True)
             student_logits = student(images)
@@ -338,9 +397,9 @@ def main():
                 # 64 for batch one and 36 for batch two.
                 loss = F.cross_entropy(student_logits, true_targets)
             else:
-                if args.supervision == "high_entropy_soft1":
+                if args.supervision in ("high_entropy_soft1", "high_entropy_permuted_soft1"):
                     soft_mask = high_entropy_group
-                elif args.supervision == "low_entropy_soft1":
+                elif args.supervision in ("low_entropy_soft1", "low_entropy_permuted_soft1"):
                     soft_mask = ~high_entropy_group
                 else:
                     soft_mask = torch.ones_like(high_entropy_group)
@@ -364,11 +423,59 @@ def main():
                     teacher_sums["true_class_probability"] += true_probability.sum().item()
                     teacher_sums["argmax_matches_true_class"] += prediction.eq(soft_targets).sum().item()
                     teacher_views += len(soft_targets)
+                    if permuted_supervision:
+                        original_probabilities = teacher_probabilities
+                        teacher_probabilities = torch.gather(
+                            original_probabilities,
+                            1,
+                            probability_permutation[soft_mask],
+                        )
+                        original_log = original_probabilities.clamp_min(
+                            torch.finfo(original_probabilities.dtype).tiny
+                        ).log()
+                        permuted_log = teacher_probabilities.clamp_min(
+                            torch.finfo(teacher_probabilities.dtype).tiny
+                        ).log()
+                        original_entropy = -(original_probabilities * original_log).sum(dim=1)
+                        permuted_entropy = -(teacher_probabilities * permuted_log).sum(dim=1)
+                        original_true = original_probabilities.gather(1, soft_targets[:, None]).squeeze(1)
+                        permuted_true = teacher_probabilities.gather(1, soft_targets[:, None]).squeeze(1)
+                        onehot = F.one_hot(soft_targets, num_classes=CLASSES).to(original_probabilities.dtype)
+                        original_l1 = (original_probabilities - onehot).abs().sum(dim=1)
+                        permuted_l1 = (teacher_probabilities - onehot).abs().sum(dim=1)
+                        original_l2 = (original_probabilities - onehot).square().sum(dim=1).sqrt()
+                        permuted_l2 = (teacher_probabilities - onehot).square().sum(dim=1).sqrt()
+                        deltas = {
+                            "max_abs_entropy_delta": (original_entropy - permuted_entropy).abs().max().item(),
+                            "max_abs_true_probability_delta": (original_true - permuted_true).abs().max().item(),
+                            "max_abs_maximum_probability_delta": (
+                                original_probabilities.max(dim=1).values
+                                - teacher_probabilities.max(dim=1).values
+                            ).abs().max().item(),
+                            "max_abs_onehot_l1_delta": (original_l1 - permuted_l1).abs().max().item(),
+                            "max_abs_onehot_l2_delta": (original_l2 - permuted_l2).abs().max().item(),
+                        }
+                        for key, value in deltas.items():
+                            permutation_invariant_audit[key] = max(
+                                permutation_invariant_audit[key], value
+                            )
+                        original_correct = original_probabilities.argmax(dim=1).eq(soft_targets)
+                        permuted_correct = teacher_probabilities.argmax(dim=1).eq(soft_targets)
+                        permutation_invariant_audit["argmax_correctness_mismatches"] += (
+                            original_correct != permuted_correct
+                        ).sum().item()
+                        permutation_invariant_audit["views"] += len(soft_targets)
+                        permutation_invariant_audit["batches"] += 1
                 if args.supervision == "soft1":
                     loss = -(
                         teacher_probabilities * F.log_softmax(student_logits, dim=1)
                     ).sum(dim=1).mean()
-                elif args.supervision in ("high_entropy_soft1", "low_entropy_soft1"):
+                elif args.supervision in (
+                    "high_entropy_soft1",
+                    "low_entropy_soft1",
+                    "high_entropy_permuted_soft1",
+                    "low_entropy_permuted_soft1",
+                ):
                     loss = mixed_hard_soft1_loss(
                         student_logits,
                         true_targets,
@@ -497,6 +604,8 @@ def main():
             "kd4": "16_times_KL_teacher_to_student_batchmean",
             "high_entropy_soft1": "batchmean_mixed_soft1_on_high_entropy_half_hard_ce_on_low_entropy_half",
             "low_entropy_soft1": "batchmean_mixed_hard_ce_on_high_entropy_half_soft1_on_low_entropy_half",
+            "high_entropy_permuted_soft1": "batchmean_mixed_nontarget_permuted_soft1_on_high_entropy_half_hard_ce_on_low_entropy_half",
+            "low_entropy_permuted_soft1": "batchmean_mixed_hard_ce_on_high_entropy_half_nontarget_permuted_soft1_on_low_entropy_half",
         }[args.supervision],
         "soft_label_allocation": {
             "hard": "none",
@@ -504,6 +613,8 @@ def main():
             "kd4": "all_images",
             "high_entropy_soft1": "top5_calibration_entropy_within_each_class",
             "low_entropy_soft1": "bottom5_calibration_entropy_within_each_class",
+            "high_entropy_permuted_soft1": "top5_calibration_entropy_within_each_class_nontarget_identity_permuted",
+            "low_entropy_permuted_soft1": "bottom5_calibration_entropy_within_each_class_nontarget_identity_permuted",
         }[args.supervision],
         "soft_supervised_images_per_epoch": {
             "hard": 0,
@@ -511,7 +622,22 @@ def main():
             "kd4": TRAIN_SIZE,
             "high_entropy_soft1": TRAIN_SIZE // 2,
             "low_entropy_soft1": TRAIN_SIZE // 2,
+            "high_entropy_permuted_soft1": TRAIN_SIZE // 2,
+            "low_entropy_permuted_soft1": TRAIN_SIZE // 2,
         }[args.supervision],
+        "non_target_permutation_file": (
+            None
+            if args.non_target_permutation_file is None
+            else str(args.non_target_permutation_file.resolve())
+        ),
+        "non_target_permutation_file_sha256": (
+            None
+            if args.non_target_permutation_file is None
+            else file_sha256(args.non_target_permutation_file.resolve())
+        ),
+        "permutation_invariant_audit": (
+            permutation_invariant_audit if permuted_supervision else None
+        ),
         "primary_metric": "final_top1_at_update_4000",
         "evaluation_epochs": evaluation_epochs,
         "evaluation_count": len(evaluation_epochs),

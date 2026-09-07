@@ -1,0 +1,26 @@
+{
+  "name": "imagenette_nontarget_permutation_v1",
+  "parent_experiment": "imagenette_entropy_allocation_v1",
+  "images": "exact lambda=0 manifests for selection seeds 0,1,2",
+  "new_conditions": {
+    "high_entropy_permuted_soft1": "high-entropy five use non-target-permuted Soft-1; low five use Hard",
+    "low_entropy_permuted_soft1": "high-entropy five use Hard; low five use non-target-permuted Soft-1"
+  },
+  "probability_intervention": {
+    "true_class_probability": "unchanged",
+    "other_nine_values": "reassigned by an image-identity-keyed fixed derangement",
+    "mapping_reuse": "same image mapping for every augmented view, epoch, condition, and Student seed",
+    "derangement": "true class fixed; no non-target class remains at its original identity",
+    "preserved": ["entropy", "true-class probability", "maximum probability", "one-hot L1 distance", "one-hot L2 distance", "Teacher argmax correctness"]
+  },
+  "training": {
+    "student_and_optimization": "identical to imagenette_entropy_allocation_v1",
+    "student_seeds": [42, 43, 44],
+    "selection_seeds": [0, 1, 2],
+    "epochs": 2000,
+    "optimizer_updates": 4000,
+    "evaluation_epochs": [200, 400, 600, 800, 1000, 1200, 1333, 1400, 1600, 1666, 1800, 2000],
+    "primary_metric": "Final Top-1 at epoch2000/update4000"
+  }
+}
+

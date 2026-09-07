@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from train_imagenette_entropy_selection import mixed_hard_soft1_loss
+from prepare_imagenette_nontarget_permutations import fixed_derangement
 
 
 class MixedLossTests(unittest.TestCase):
@@ -35,6 +36,26 @@ class MixedLossTests(unittest.TestCase):
                 torch.tensor([True, False, True]),
                 torch.ones(1, 2),
             )
+
+    def test_fixed_derangement_preserves_only_target_identity(self):
+        mapping, _ = fixed_derangement("train/00003/example.jpg", 3)
+        self.assertEqual(sorted(mapping), list(range(10)))
+        self.assertEqual(mapping[3], 3)
+        self.assertTrue(all(mapping[index] != index for index in range(10) if index != 3))
+        self.assertEqual(mapping, fixed_derangement("train/00003/example.jpg", 3)[0])
+
+    def test_derangement_preserves_requested_probability_invariants(self):
+        target = 3
+        mapping, _ = fixed_derangement("train/00003/example.jpg", target)
+        probability = torch.softmax(torch.arange(10, dtype=torch.float32), dim=0)
+        permuted = probability[torch.tensor(mapping)]
+        onehot = F.one_hot(torch.tensor(target), num_classes=10).float()
+        self.assertEqual(float(probability[target]), float(permuted[target]))
+        self.assertEqual(float(probability.max()), float(permuted.max()))
+        self.assertTrue(torch.allclose(torch.sort(probability).values, torch.sort(permuted).values))
+        self.assertTrue(torch.allclose(-(probability * probability.log()).sum(), -(permuted * permuted.log()).sum()))
+        self.assertTrue(torch.allclose((probability - onehot).abs().sum(), (permuted - onehot).abs().sum()))
+        self.assertTrue(torch.allclose((probability - onehot).square().sum(), (permuted - onehot).square().sum()))
 
 
 if __name__ == "__main__":
