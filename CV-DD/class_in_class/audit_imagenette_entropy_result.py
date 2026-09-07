@@ -8,6 +8,7 @@ from pathlib import Path
 from imagenette_entropy_protocol import (
     BATCH_SIZE,
     CLASSES,
+    DATASET_NAME,
     EVAL_EVERY_EPOCHS,
     IPC,
     LR,
@@ -51,7 +52,7 @@ def main():
         "status": "complete",
         "protocol": args.protocol_name,
         "protocol_spec_sha256": file_sha256(protocol_spec),
-        "dataset": "imagenet-nette",
+        "dataset": DATASET_NAME,
         "classes": CLASSES,
         "ipc": IPC,
         "train_images": TRAIN_SIZE,

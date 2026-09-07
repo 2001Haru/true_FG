@@ -7,7 +7,10 @@ from pathlib import Path
 
 import numpy as np
 
-from imagenette_entropy_protocol import CLASSES, IPC, atomic_json, file_sha256, validate_official_split
+from imagenette_entropy_protocol import (
+    CLASSES, DATASET_NAME, IPC,
+    atomic_json, file_sha256, validate_official_split,
+)
 
 
 def distribution(rows, key):
@@ -138,8 +141,8 @@ def main():
     split_path = Path(base["official_split_file_list"])
     top_manifest = {
         "status": "complete",
-        "experiment": "imagenette_highest_entropy_top10_v1",
-        "dataset": "imagenet-nette",
+        "experiment": f"{DATASET_NAME}_highest_entropy_top10_v1",
+        "dataset": DATASET_NAME,
         "classes": CLASSES,
         "ipc": IPC,
         "lambda": "highest_entropy_top10_per_class",

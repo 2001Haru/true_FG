@@ -12,7 +12,11 @@ from pathlib import Path
 import numpy as np
 
 from imagenette_entropy_protocol import (
+    BASE_EXPERIMENT_NAME,
     CLASSES,
+    DATASET_NAME,
+    DISPLAY_NAME,
+    HIGH_EXPERIMENT_NAME,
     IPC,
     SELECTION_SEEDS,
     atomic_json,
@@ -166,9 +170,9 @@ def main():
             arm = f"lambda_{lambda_value:+d}_rseed{selection_seed}"
             manifest = {
                 "status": "complete",
-                "experiment": "imagenette_entropy_high_lambda_v1",
-                "parent_experiment": "imagenette_entropy_selection_v1",
-                "dataset": "imagenet-nette",
+                "experiment": HIGH_EXPERIMENT_NAME,
+                "parent_experiment": BASE_EXPERIMENT_NAME,
+                "dataset": DATASET_NAME,
                 "classes": CLASSES,
                 "ipc": IPC,
                 "lambda": lambda_value,
@@ -197,7 +201,7 @@ def main():
             contact_sheet(
                 root / "preflight" / "high_lambda_contact_sheets" / f"{arm}.jpg",
                 selected_records,
-                f"ImageNette IPC10 {arm}",
+                f"{DISPLAY_NAME} IPC10 {arm}",
             )
 
     top_indices = []
@@ -222,7 +226,7 @@ def main():
     contact_sheet(
         root / "preflight" / "high_lambda_contact_sheets" / "highest_entropy_top10_per_class.jpg",
         top_records,
-        "ImageNette highest entropy Top10/class",
+        f"{DISPLAY_NAME} highest entropy Top10/class",
     )
 
     adjacent = {}
@@ -241,7 +245,7 @@ def main():
 
     payload = {
         "status": "complete_pending_high_lambda_review",
-        "experiment": "imagenette_entropy_high_lambda_v1",
+        "experiment": HIGH_EXPERIMENT_NAME,
         "parent_preflight": str(base_preflight_path.resolve()),
         "parent_preflight_sha256": file_sha256(base_preflight_path),
         "per_image_statistics": str(per_image_path.resolve()),

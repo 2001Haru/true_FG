@@ -16,7 +16,10 @@ from torch.utils.data import DataLoader, Dataset
 
 from imagenette_entropy_protocol import (
     CALIBRATION_VIEW_SEED,
+    BASE_EXPERIMENT_NAME,
     CLASSES,
+    DATASET_NAME,
+    DISPLAY_NAME,
     DeterministicReleasedView,
     HOLDOUT_VIEW_SEED,
     IMAGE_SIZE,
@@ -142,7 +145,7 @@ def load_dino(cache_path, train_dataset, data_root):
     paths = split["relative_paths"]
     expected = [Path(path).relative_to(data_root).as_posix() for path, _ in train_dataset.samples]
     if paths != expected or split["targets"].tolist() != train_dataset.targets:
-        raise RuntimeError("DINO cache train paths/targets differ from official ImageNette split")
+        raise RuntimeError(f"DINO cache train paths/targets differ from official {DISPLAY_NAME} split")
     features = F.normalize(split["features"].float(), dim=1).numpy().astype(np.float64)
     return features, cache["metadata"]
 
@@ -366,8 +369,8 @@ def main():
             arm = f"lambda_{lambda_value:+d}_rseed{selection_seed}"
             manifest = {
                 "status": "complete",
-                "experiment": "imagenette_entropy_selection_v1",
-                "dataset": "imagenet-nette",
+                "experiment": BASE_EXPERIMENT_NAME,
+                "dataset": DATASET_NAME,
                 "classes": CLASSES,
                 "ipc": IPC,
                 "lambda": lambda_value,
@@ -402,7 +405,7 @@ def main():
             contact_sheet(
                 output_root / "preflight" / "contact_sheets" / f"{arm}.jpg",
                 selected_records,
-                f"ImageNette IPC10 {arm}",
+                f"{DISPLAY_NAME} IPC10 {arm}",
             )
 
     entropy_spread = []
@@ -422,7 +425,7 @@ def main():
             overlap[f"rseed{selection_seed}:{left:+d}_vs_{right:+d}"] = len(a & b) / len(a)
     preflight = {
         "status": "complete_pending_manual_visual_review",
-        "experiment": "imagenette_entropy_selection_v1",
+        "experiment": BASE_EXPERIMENT_NAME,
         "data_root": str(data_root),
         "train_images": len(train_dataset),
         "test_images": len(test_dataset),

@@ -1,0 +1,11 @@
+{
+  "name": "imagewoof_entropy_high_lambda_v1",
+  "parent": "imagewoof_entropy_selection_v1",
+  "lambdas": [8, 16, 32],
+  "selection_seeds": [0, 1, 2],
+  "supervision": ["hard", "soft1"],
+  "student_seeds": [42, 43, 44],
+  "training": "identical to imagewoof_entropy_selection_v1",
+  "evaluation_epochs": [200, 400, 600, 800, 1000, 1200, 1333, 1400, 1600, 1666, 1800, 2000],
+  "primary": "Final Top-1 at epoch2000/update4000"
+}

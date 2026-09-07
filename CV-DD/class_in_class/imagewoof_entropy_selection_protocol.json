@@ -1,0 +1,62 @@
+{
+  "name": "imagewoof_entropy_selection_v1",
+  "dataset": {
+    "name": "fastai ImageWoof2 official 70/30 clean-label split",
+    "train_images": 9025,
+    "test_images": 3929,
+    "classes": 10,
+    "ipc": 10
+  },
+  "selection": {
+    "teacher_temperature": 1.0,
+    "calibration_views_per_image": 16,
+    "holdout_views_per_image": 16,
+    "entropy_definition": "mean per-view entropy divided by log(10)",
+    "percentile_definition": "within-true-class average tie rank divided by class_size-1; no min-max stretching",
+    "lambdas": [-4, -2, 0, 2, 4, 8, 16, 32],
+    "selection_seeds": [0, 1, 2],
+    "sampling": "identity-keyed shared Gumbel top-k without replacement",
+    "deterministic_tail": "highest calibration entropy Top10 per true class",
+    "images_per_class": 10,
+    "loss_weighting_after_selection": "equal"
+  },
+  "teacher": {
+    "model": "torchvision ResNet18 random initialization",
+    "training": "CV-DD squeeze_imagenette-derived ImageWoof teacher; final epoch300 checkpoint",
+    "mode_during_student_training": "eval, frozen, no_grad"
+  },
+  "student": {
+    "model": "CoDA released ResNetAP-10",
+    "initialization": "random",
+    "normalization_layer": "GroupNorm(C,C), called instance in released code",
+    "student_seeds": [42, 43, 44]
+  },
+  "optimization": {
+    "supervision": ["hard", "soft1"],
+    "optimizer": "SGD",
+    "lr": 0.01,
+    "momentum": 0.9,
+    "weight_decay": 0.0005,
+    "weight_decay_exclusions": [],
+    "batch_size": 64,
+    "actual_batches_per_epoch": [64, 36],
+    "gradient_accumulation": 1,
+    "epochs": 2000,
+    "updates": 4000,
+    "lr_milestones_after_epochs": [1333, 1666],
+    "lr_gamma": 0.2,
+    "warmup": false,
+    "cutmix": false,
+    "mixup": false,
+    "label_smoothing": 0.0,
+    "evaluation_epochs": [200, 400, 600, 800, 1000, 1200, 1333, 1400, 1600, 1666, 1800, 2000]
+  },
+  "augmentation": {
+    "train": "exact ImageNette deterministic released 256 pipeline and identity-keyed randomness",
+    "test": "ResizeShorter256 bilinear antialias, CenterCrop256, ImageNet normalization"
+  },
+  "metrics": {
+    "primary": "Final Top-1 at update4000",
+    "diagnostic": "Best over 12 registered evaluations"
+  }
+}

@@ -8,6 +8,7 @@ from pathlib import Path
 from imagenette_entropy_protocol import (
     BATCH_SIZE,
     CLASSES,
+    DATASET_NAME,
     TEST_IMAGES,
     TOTAL_UPDATES,
     TRAIN_EPOCHS,
@@ -37,10 +38,16 @@ def main():
     parser.add_argument("--selection-seed", type=int)
     parser.add_argument("--student-seed", choices=(42, 43, 44), required=True, type=int)
     parser.add_argument("--experiment-root", required=True, type=Path)
+    parser.add_argument("--protocol-name", default="imagenette_entropy_allocation_v1")
+    parser.add_argument("--protocol-spec", type=Path)
     args = parser.parse_args()
     payload = json.loads(args.result.read_text(encoding="utf-8"))
     root = args.experiment_root.resolve()
-    spec = Path(__file__).resolve().with_name("imagenette_entropy_allocation_protocol.json")
+    spec = (
+        args.protocol_spec.resolve()
+        if args.protocol_spec is not None
+        else Path(__file__).resolve().with_name("imagenette_entropy_allocation_protocol.json")
+    )
     is_top = args.arm.startswith("top10_")
     supervision = args.arm.removeprefix("top10_") if is_top else args.arm
     expected_manifest = (
@@ -50,9 +57,9 @@ def main():
     )
     expected = {
         "status": "complete",
-        "protocol": "imagenette_entropy_allocation_v1",
+        "protocol": args.protocol_name,
         "protocol_spec_sha256": file_sha256(spec),
-        "dataset": "imagenet-nette",
+        "dataset": DATASET_NAME,
         "classes": CLASSES,
         "ipc": 10,
         "train_images": TRAIN_SIZE,

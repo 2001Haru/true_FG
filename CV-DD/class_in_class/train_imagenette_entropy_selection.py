@@ -17,6 +17,8 @@ from torchvision import datasets
 from imagenette_entropy_protocol import (
     BATCH_SIZE,
     CLASSES,
+    DATASET_NAME,
+    DISPLAY_NAME,
     DeterministicReleasedView,
     EVAL_EVERY_EPOCHS,
     IMAGE_SIZE,
@@ -50,7 +52,7 @@ class PairedManifestDataset(Dataset):
             or self.manifest.get("selection_images") != TRAIN_SIZE
             or self.manifest.get("ipc") != IPC
         ):
-            raise RuntimeError(f"invalid ImageNette entropy selection manifest: {manifest_path}")
+            raise RuntimeError(f"invalid {DISPLAY_NAME} entropy selection manifest: {manifest_path}")
         rows = sorted(
             self.manifest["images"],
             key=lambda row: (int(row["class_id"]), row["relative_path"]),
@@ -287,7 +289,7 @@ def main():
     train_dataset.bind_student_seed(args.student_seed)
     test_dataset = datasets.ImageFolder(args.test_dir.resolve(), transform=test_transform)
     if len(test_dataset) != TEST_IMAGES or len(test_dataset.classes) != CLASSES:
-        raise RuntimeError("test split is not official 3925-image ImageNette")
+        raise RuntimeError(f"test split is not official {TEST_IMAGES}-image {DISPLAY_NAME}")
     manifest_classes = sorted({row["class_name"] for row in train_dataset.rows})
     if manifest_classes != test_dataset.classes:
         raise RuntimeError("selection/test class order mismatch")
@@ -550,7 +552,7 @@ def main():
         "protocol": args.protocol_name,
         "protocol_spec": str(protocol_spec.resolve()),
         "protocol_spec_sha256": file_sha256(protocol_spec),
-        "dataset": "imagenet-nette",
+        "dataset": DATASET_NAME,
         "classes": CLASSES,
         "ipc": IPC,
         "train_images": TRAIN_SIZE,

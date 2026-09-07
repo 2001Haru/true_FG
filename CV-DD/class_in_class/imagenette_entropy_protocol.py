@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -16,9 +17,24 @@ from torchvision.transforms import InterpolationMode
 from torchvision.transforms import functional as TF
 
 
+DATASET_PROFILE = os.environ.get("ENTROPY_DATASET_PROFILE", "imagenette")
+if DATASET_PROFILE == "imagenette":
+    DATASET_NAME = "imagenet-nette"
+    DISPLAY_NAME = "ImageNette"
+    BASE_EXPERIMENT_NAME = "imagenette_entropy_selection_v1"
+    HIGH_EXPERIMENT_NAME = "imagenette_entropy_high_lambda_v1"
+    TRAIN_IMAGES = 9469
+    TEST_IMAGES = 3925
+elif DATASET_PROFILE == "imagewoof":
+    DATASET_NAME = "imagewoof"
+    DISPLAY_NAME = "ImageWoof"
+    BASE_EXPERIMENT_NAME = "imagewoof_entropy_selection_v1"
+    HIGH_EXPERIMENT_NAME = "imagewoof_entropy_high_lambda_v1"
+    TRAIN_IMAGES = 9025
+    TEST_IMAGES = 3929
+else:
+    raise RuntimeError(f"unknown ENTROPY_DATASET_PROFILE={DATASET_PROFILE!r}")
 CLASSES = 10
-TRAIN_IMAGES = 9469
-TEST_IMAGES = 3925
 IPC = 10
 TRAIN_SIZE = CLASSES * IPC
 IMAGE_SIZE = 256
@@ -257,10 +273,10 @@ def validate_official_split(data_root: Path):
     train = datasets.ImageFolder(data_root / "train")
     test = datasets.ImageFolder(data_root / "test")
     if train.classes != test.classes or len(train.classes) != CLASSES:
-        raise RuntimeError("ImageNette train/test class mapping mismatch")
+        raise RuntimeError(f"{DISPLAY_NAME} train/test class mapping mismatch")
     if len(train) != TRAIN_IMAGES or len(test) != TEST_IMAGES:
         raise RuntimeError(
-            f"ImageNette image counts are {len(train)}/{len(test)}, expected "
+            f"{DISPLAY_NAME} image counts are {len(train)}/{len(test)}, expected "
             f"{TRAIN_IMAGES}/{TEST_IMAGES}"
         )
     return train, test

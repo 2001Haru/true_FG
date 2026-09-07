@@ -85,6 +85,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument("--workers", default=8, type=int)
+    parser.add_argument("--test-every", default=10, type=int)
     args = parser.parse_args()
     data = args.data_dir.resolve(); output = args.output_dir.resolve()
     checkpoint = output / "ResNet18.pth"
@@ -106,8 +108,10 @@ def main():
         raise RuntimeError(f"ImageWoof2 counts={len(train_set)}/{len(test_set)}")
     if tuple(train_set.classes) != EXPECTED_CLASSES or train_set.class_to_idx != test_set.class_to_idx:
         raise RuntimeError("ImageWoof2 class mapping mismatch")
-    train_loader = DataLoader(train_set, batch_size=64, shuffle=True, num_workers=4)
-    test_loader = DataLoader(test_set, batch_size=64, shuffle=False, num_workers=4)
+    if args.workers < 0 or args.test_every <= 0:
+        raise RuntimeError("workers and test cadence must be positive")
+    train_loader = DataLoader(train_set, batch_size=64, shuffle=True, num_workers=args.workers)
+    test_loader = DataLoader(test_set, batch_size=64, shuffle=False, num_workers=args.workers)
 
     initial_torch_seed = torch.initial_seed()
     model = models.resnet18(weights=None)
@@ -119,16 +123,28 @@ def main():
     scheduler = CosineAnnealingLR(optimizer, T_max=100)
     history = []
     best = {"epoch": None, "top1": float("-inf")}
+    evaluation_epochs = sorted(
+        set(range(args.test_every, 301, args.test_every))
+        | {1, 99, 100, 101, 199, 200, 201, 299, 300}
+    )
     started = time.time()
     for epoch in range(1, 301):
         lr = float(optimizer.param_groups[0]["lr"])
         train_metrics = train_epoch(model, train_loader, criterion, optimizer, device)
-        test_metrics = validate(model, test_loader, criterion, device)
+        if epoch in evaluation_epochs:
+            test_metrics = validate(model, test_loader, criterion, device)
+        else:
+            # The released loop constructs one validation iterator every epoch.
+            # Its only global-RNG effect is DataLoader's base-seed draw.  Preserve
+            # that draw even when the deterministic validation forward is skipped,
+            # so reducing diagnostics does not change the next train iterator RNG.
+            torch.empty((), dtype=torch.int64).random_()
+            test_metrics = None
         row = {"epoch": epoch, "lr": lr, "train": train_metrics, "test": test_metrics}
         history.append(row)
-        if test_metrics["top1"] > best["top1"]:
+        if test_metrics is not None and test_metrics["top1"] > best["top1"]:
             best = {"epoch": epoch, "top1": test_metrics["top1"]}
-        print(json.dumps({"epoch": epoch, "lr": lr, "train": train_metrics, "test_top1": test_metrics["top1"]}), flush=True)
+        print(json.dumps({"epoch": epoch, "lr": lr, "train": train_metrics, "test_top1": None if test_metrics is None else test_metrics["top1"]}), flush=True)
         scheduler.step()
     torch.save(model.state_dict(), checkpoint)
     resource_manifest = data / "resource_manifest.json"
@@ -138,17 +154,21 @@ def main():
         "intentional_changes": [
             "dataset changed from ImageNette2 to ImageWoof2",
             "checkpoint filename normalized to ResNet18.pth",
-            "complete history and provenance recorded; logging cadence changed without numerical effect"
+            "workers increased from 4 to 8",
+            "deterministic test evaluation reduced to registered epochs; skipped iterator base-seed draw is reproduced to preserve training RNG cadence",
+            "complete history and provenance recorded"
         ],
         "unseeded_release_semantics": True, "torch_initial_seed_observed": initial_torch_seed,
         "model": "torchvision ResNet18", "initialization": "random", "classes": len(EXPECTED_CLASSES),
         "class_to_idx": train_set.class_to_idx, "train_images": len(train_set), "test_images": len(test_set),
         "train_transform": "RandomResizedCrop224 + HorizontalFlip + ToTensor + ImageNet normalization",
         "test_transform": "Resize256 + CenterCrop224 + ToTensor + ImageNet normalization",
-        "batch_size": 64, "workers": 4, "persistent_workers": False,
+        "batch_size": 64, "workers": args.workers, "persistent_workers": False,
         "optimizer": "SGD", "initial_lr": 0.01, "momentum": 0.9, "weight_decay": 1e-4,
         "scheduler": "CosineAnnealingLR(T_max=100, eta_min=0) stepped after each epoch",
         "epochs": 300, "checkpoint_selection": "final epoch only",
+        "evaluation_epochs": evaluation_epochs, "evaluation_count": len(evaluation_epochs),
+        "skipped_validation_rng_semantics": "one global int64 random draw reproduces the released validation DataLoader base-seed draw",
         "history": history, "best_test_top1_diagnostic": best,
         "final_train": history[-1]["train"], "final_test": history[-1]["test"],
         "data_root": str(data), "resource_manifest": str(resource_manifest),
