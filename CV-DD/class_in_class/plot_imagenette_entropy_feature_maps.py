@@ -71,7 +71,9 @@ def scatter_panels(coordinates, entropy, correct, targets, output, title, axis_l
         if class_id % 5 == 0:
             axis.set_ylabel(axis_labels[1], fontsize=9)
     scalar = matplotlib.cm.ScalarMappable(norm=norm, cmap=cmap)
-    colorbar = fig.colorbar(scalar, ax=axes, fraction=0.018, pad=0.018)
+    fig.subplots_adjust(bottom=0.10, top=0.90, left=0.055, right=0.91, wspace=0.20, hspace=0.32)
+    colorbar_axis = fig.add_axes([0.925, 0.20, 0.012, 0.58])
+    colorbar = fig.colorbar(scalar, cax=colorbar_axis)
     colorbar.set_label("Teacher normalized entropy H / log(10)", fontsize=9)
     legend = [
         Line2D([0], [0], marker="o", color="none", markerfacecolor="0.45", markeredgewidth=0, markersize=5, label="All 16 calibration views correct"),
@@ -79,7 +81,6 @@ def scatter_panels(coordinates, entropy, correct, targets, output, title, axis_l
     ]
     fig.legend(handles=legend, loc="lower center", ncol=2, frameon=False, fontsize=9)
     fig.suptitle(title, fontsize=14, y=1.01)
-    fig.subplots_adjust(bottom=0.10, top=0.90, wspace=0.20, hspace=0.32, right=0.94)
     save_figure(fig, output)
 
 
@@ -198,7 +199,8 @@ def representative_strips(
                     shown_maximum = wrong_maximum[index] if is_error_strip else maximum[index]
                     correct_views = int(round(view_correct_rate[index] * 16))
                     axis.set_title(
-                        f"H={entropy[index]:.3f}  pred={shown_prediction}  p={shown_maximum:.3f}  views={correct_views}/16",
+                        f"H={entropy[index]:.3f}  p={shown_maximum:.3f}\n"
+                        f"pred={shown_prediction}  correct={correct_views}/16",
                         fontsize=8,
                         color="#b2182b" if correct_views < 16 else "black",
                     )
