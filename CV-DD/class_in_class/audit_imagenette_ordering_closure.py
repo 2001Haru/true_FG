@@ -22,9 +22,11 @@ from PIL import Image
 from scipy.stats import kendalltau, pearsonr, spearmanr, t
 from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets
+from torchvision.transforms import InterpolationMode
+from torchvision.transforms import functional as TF
 
 from imagenette_entropy_protocol import (
-    CLASSES, DeterministicReleasedView, TEST_IMAGES, TRAIN_EPOCHS, atomic_json,
+    CLASSES, DeterministicReleasedView, IMAGE_SIZE, TEST_IMAGES, TRAIN_EPOCHS, _rrc_params, _uniform, atomic_json,
     build_student, build_teacher, file_sha256, identity_seed, load_state_dict_payload,
     normalize, test_transform,
 )
@@ -46,6 +48,15 @@ class HighTrainingViews(Dataset):
         self.rows = rows
         self.student_seed = student_seed
         self.view = DeterministicReleasedView()
+        self.base_tensors = []
+        for row in rows:
+            with Image.open(row["source_path"]) as image:
+                image = image.convert("RGB")
+                image = TF.resize(
+                    image, IMAGE_SIZE, interpolation=InterpolationMode.BILINEAR, antialias=True,
+                )
+                image = TF.center_crop(image, [IMAGE_SIZE, IMAGE_SIZE])
+                self.base_tensors.append(TF.to_tensor(image))
 
     def __len__(self):
         return len(self.rows) * TRAIN_EPOCHS
@@ -57,8 +68,32 @@ class HighTrainingViews(Dataset):
             "imagenette-entropy-student-view-v1", self.student_seed,
             epoch_index + 1, row["relative_path"],
         )
-        with Image.open(row["source_path"]) as image:
-            tensor = self.view(image, seed)
+        generator = torch.Generator().manual_seed(seed)
+        tensor = self.base_tensors[image_index].clone()
+        top, left, height, width = _rrc_params(tensor, generator)
+        tensor = TF.resized_crop(
+            tensor, top, left, height, width, [IMAGE_SIZE, IMAGE_SIZE],
+            interpolation=InterpolationMode.BILINEAR, antialias=True,
+        )
+        if float(torch.rand((), generator=generator)) < 0.5:
+            tensor = TF.hflip(tensor)
+        factors = {
+            0: _uniform(generator, 0.6, 1.4),
+            1: _uniform(generator, 0.6, 1.4),
+            2: _uniform(generator, 0.6, 1.4),
+        }
+        for operation in torch.randperm(4, generator=generator).tolist():
+            if operation == 0:
+                tensor = TF.adjust_brightness(tensor, factors[0])
+            elif operation == 1:
+                tensor = TF.adjust_contrast(tensor, factors[1])
+            elif operation == 2:
+                tensor = TF.adjust_saturation(tensor, factors[2])
+        alpha = torch.randn(3, generator=generator) * 0.1
+        rgb = (
+            self.view.lighting_eigenvectors * alpha.view(1, 3) * self.view.lighting_eigenvalues
+        ).sum(dim=1)
+        tensor = tensor + rgb.view(3, 1, 1)
         return tensor, int(row["class_id"]), image_index
 
 
@@ -98,19 +133,20 @@ def destination_tables(rows, templates, manifest_seed):
     return torch.tensor(image, dtype=torch.long), torch.tensor(klass, dtype=torch.long)
 
 
-def evaluate_predictions(checkpoint, loader, device):
+def evaluate_predictions(checkpoint, test_images, device, batch_size=512):
     model = build_student().to(device)
     model.load_state_dict(load_state_dict_payload(checkpoint), strict=True)
     model.eval()
     output = []
     with torch.inference_mode():
-        for images, _ in loader:
-            output.append(model(images.to(device, non_blocking=True)).argmax(1).cpu())
+        for start in range(0, len(test_images), batch_size):
+            images = test_images[start : start + batch_size].to(device, non_blocking=True)
+            output.append(model(images).argmax(1).cpu())
     del model
     return torch.cat(output).numpy()
 
 
-def compute_tuple(args, manifest_seed, student_seed, teacher, templates, test_loader, test_targets):
+def compute_tuple(args, manifest_seed, student_seed, teacher, templates, test_images, test_targets):
     cache = args.output_root / "cache" / f"r{manifest_seed}_s{student_seed}.json"
     if cache.exists() and not args.force:
         print(f"reuse {cache}", flush=True)
@@ -181,8 +217,8 @@ def compute_tuple(args, manifest_seed, student_seed, teacher, templates, test_lo
 
     checkpoint_a = args.experiment_root / f"checkpoints/rseed{manifest_seed}/sseed{student_seed}/A/final.pth.tar"
     checkpoint_p = args.experiment_root / f"checkpoints/rseed{manifest_seed}/sseed{student_seed}/Aprime/final.pth.tar"
-    pred_a = evaluate_predictions(checkpoint_a, test_loader, args.device)
-    pred_p = evaluate_predictions(checkpoint_p, test_loader, args.device)
+    pred_a = evaluate_predictions(checkpoint_a, test_images, args.device)
+    pred_p = evaluate_predictions(checkpoint_p, test_images, args.device)
     confusion = {"A": np.zeros((CLASSES, CLASSES), dtype=np.int64), "Aprime": np.zeros((CLASSES, CLASSES), dtype=np.int64)}
     np.add.at(confusion["A"], (test_targets, pred_a), 1)
     np.add.at(confusion["Aprime"], (test_targets, pred_p), 1)
@@ -463,18 +499,21 @@ def main():
     if args.phase == "templates":
         compute_template_stability(args, teacher, templates)
         return
-    test_dataset = datasets.ImageFolder(args.data_root / "test", transform=test_transform)
+    test_dataset = datasets.ImageFolder(args.data_root / "test")
     if len(test_dataset) != TEST_IMAGES:
         raise RuntimeError("not the official ImageNette test split")
-    test_loader = DataLoader(
-        test_dataset, batch_size=512, shuffle=False, num_workers=args.workers,
-        persistent_workers=args.workers > 0, pin_memory=True,
-        prefetch_factor=2 if args.workers > 0 else None,
-    )
+    print("caching deterministic test tensors", flush=True)
+    test_images = []
+    for index, (path, _) in enumerate(test_dataset.samples):
+        with Image.open(path) as image:
+            test_images.append(test_transform(image))
+        if index % 500 == 0:
+            print(f"test tensors {index + 1}/{len(test_dataset)}", flush=True)
+    test_images = torch.stack(test_images).pin_memory()
     test_targets = np.asarray(test_dataset.targets, dtype=np.int64)
     for manifest_seed in map(int, args.manifest_seeds.split(",")):
         for student_seed in PAIRS[manifest_seed]:
-            compute_tuple(args, manifest_seed, student_seed, teacher, templates, test_loader, test_targets)
+            compute_tuple(args, manifest_seed, student_seed, teacher, templates, test_images, test_targets)
 
 
 if __name__ == "__main__":
