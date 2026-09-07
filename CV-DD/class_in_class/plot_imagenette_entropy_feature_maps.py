@@ -74,8 +74,8 @@ def scatter_panels(coordinates, entropy, correct, targets, output, title, axis_l
     colorbar = fig.colorbar(scalar, ax=axes, fraction=0.018, pad=0.018)
     colorbar.set_label("Teacher normalized entropy H / log(10)", fontsize=9)
     legend = [
-        Line2D([0], [0], marker="o", color="none", markerfacecolor="0.45", markeredgewidth=0, markersize=5, label="Aggregate prediction correct"),
-        Line2D([0], [0], marker="o", color="none", markerfacecolor="0.45", markeredgecolor="#d62728", markeredgewidth=1.2, markersize=7, label="Aggregate prediction wrong"),
+        Line2D([0], [0], marker="o", color="none", markerfacecolor="0.45", markeredgewidth=0, markersize=5, label="All 16 calibration views correct"),
+        Line2D([0], [0], marker="o", color="none", markerfacecolor="0.45", markeredgecolor="#d62728", markeredgewidth=1.2, markersize=7, label="At least one calibration view wrong"),
     ]
     fig.legend(handles=legend, loc="lower center", ncol=2, frameon=False, fontsize=9)
     fig.suptitle(title, fontsize=14, y=1.01)
@@ -134,7 +134,18 @@ def load_thumbnail(path, size=(150, 110)):
     return np.asarray(canvas)
 
 
-def representative_strips(source_paths, entropy, predictions, maximum, correct, targets, output_dir):
+def representative_strips(
+    source_paths,
+    entropy,
+    predictions,
+    maximum,
+    correct,
+    view_correct_rate,
+    wrong_predictions,
+    wrong_maximum,
+    targets,
+    output_dir,
+):
     selections = {}
     for class_id in range(10):
         indices = np.flatnonzero(targets == class_id).tolist()
@@ -152,11 +163,15 @@ def representative_strips(source_paths, entropy, predictions, maximum, correct, 
                 if slot < len(chosen):
                     index = chosen[slot]
                     axis.imshow(load_thumbnail(source_paths[index]))
-                    state = "OK" if correct[index] else "ERR"
+                    is_error_strip = group_name == "highest-entropy errors"
+                    shown_prediction = wrong_predictions[index] if is_error_strip else predictions[index]
+                    shown_maximum = wrong_maximum[index] if is_error_strip else maximum[index]
+                    correct_views = int(round(view_correct_rate[index] * 16))
+                    state = f"views={correct_views}/16"
                     axis.set_title(
-                        f"H={entropy[index]:.3f} p={maximum[index]:.2f}\npred={predictions[index]} {state}",
+                        f"H={entropy[index]:.3f} p={shown_maximum:.2f}\npred={shown_prediction} {state}",
                         fontsize=6,
-                        color="#b2182b" if not correct[index] else "black",
+                        color="#b2182b" if correct_views < 16 else "black",
                     )
                 if class_id == 0 and slot == 2:
                     axis.text(0.5, 1.34, group_name, transform=axis.transAxes, ha="center", va="bottom", fontsize=10, fontweight="bold")
@@ -178,11 +193,14 @@ def representative_strips(source_paths, entropy, predictions, maximum, correct, 
                 if slot < len(chosen):
                     index = chosen[slot]
                     axis.imshow(load_thumbnail(source_paths[index], (210, 150)))
-                    state = "OK" if correct[index] else "ERR"
+                    is_error_strip = group_name == "highest-entropy errors"
+                    shown_prediction = wrong_predictions[index] if is_error_strip else predictions[index]
+                    shown_maximum = wrong_maximum[index] if is_error_strip else maximum[index]
+                    correct_views = int(round(view_correct_rate[index] * 16))
                     axis.set_title(
-                        f"H={entropy[index]:.3f}  pred={predictions[index]}  p={maximum[index]:.3f}  {state}",
+                        f"H={entropy[index]:.3f}  pred={shown_prediction}  p={shown_maximum:.3f}  views={correct_views}/16",
                         fontsize=8,
-                        color="#b2182b" if not correct[index] else "black",
+                        color="#b2182b" if correct_views < 16 else "black",
                     )
                 if slot == 0:
                     axis.text(-0.10, 0.5, group_name, transform=axis.transAxes, ha="right", va="center", fontsize=9)
@@ -216,7 +234,10 @@ def main():
     entropy = np.asarray(prediction["mean_view_normalized_entropy"], dtype=np.float64)
     predictions = np.asarray(prediction["aggregate_prediction"], dtype=np.int64)
     maximum = np.asarray(prediction["aggregate_maximum_probability"], dtype=np.float64)
-    correct = np.asarray(prediction["aggregate_correct"], dtype=bool)
+    view_correct_rate = np.asarray(prediction["view_correct_rate"], dtype=np.float64)
+    correct = np.asarray(prediction["all_views_correct"], dtype=bool)
+    wrong_predictions = np.asarray(prediction["highest_wrong_view_prediction"], dtype=np.int64)
+    wrong_maximum = np.asarray(prediction["highest_wrong_view_maximum_probability"], dtype=np.float64)
     source_paths = [row["source_path"] for row in per_image]
 
     global_pca = PCA(n_components=2, svd_solver="full")
@@ -264,6 +285,9 @@ def main():
         predictions,
         maximum,
         correct,
+        view_correct_rate,
+        wrong_predictions,
+        wrong_maximum,
         targets,
         args.output_dir,
     )
@@ -295,8 +319,10 @@ def main():
         "prediction_definition": prediction["definition"]["image_prediction"],
         "global_explained_variance_ratio": global_pca.explained_variance_ratio_.tolist(),
         "per_class_pca": local_models,
-        "aggregate_teacher_accuracy": float(correct.mean()),
-        "teacher_errors_per_class": [int((~correct[targets == class_id]).sum()) for class_id in range(10)],
+        "all_16_views_correct_fraction": float(correct.mean()),
+        "mean_per_view_teacher_accuracy": float(view_correct_rate.mean()),
+        "aggregate_mean_probability_teacher_accuracy": float(np.asarray(prediction["aggregate_correct"], dtype=bool).mean()),
+        "images_with_any_wrong_view_per_class": [int((~correct[targets == class_id]).sum()) for class_id in range(10)],
         "entropy_median_per_class": medians.tolist(),
         "representatives": {
             str(class_id): {

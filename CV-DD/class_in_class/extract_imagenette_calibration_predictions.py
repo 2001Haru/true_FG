@@ -61,7 +61,14 @@ def main():
     probability_sum = torch.zeros(len(train_dataset), CLASSES, dtype=torch.float64)
     entropy_sum = torch.zeros(len(train_dataset), dtype=torch.float64)
     view_correct_sum = torch.zeros(len(train_dataset), dtype=torch.float64)
+    prediction_counts = torch.zeros(len(train_dataset), CLASSES, dtype=torch.int64)
+    maximum_probability_sum = torch.zeros(len(train_dataset), dtype=torch.float64)
+    highest_wrong_entropy = torch.full((len(train_dataset),), float("-inf"), dtype=torch.float64)
+    highest_wrong_prediction = torch.full((len(train_dataset),), -1, dtype=torch.int64)
+    highest_wrong_maximum_probability = torch.full((len(train_dataset),), float("nan"), dtype=torch.float64)
+    highest_wrong_view_index = torch.full((len(train_dataset),), -1, dtype=torch.int64)
     counts = torch.zeros(len(train_dataset), dtype=torch.int64)
+    processed_views = 0
     with torch.inference_mode():
         for batch_index, (images, targets, indices) in enumerate(loader):
             images = normalize(images.cuda(non_blocking=True))
@@ -72,15 +79,40 @@ def main():
             entropy = -(probabilities * log_probabilities).sum(dim=1) / torch.log(
                 probabilities.new_tensor(float(CLASSES))
             )
+            confidence, prediction = probabilities.max(dim=1)
             indices = indices.long()
             probability_sum.index_add_(0, indices, probabilities.double().cpu())
             entropy_sum.index_add_(0, indices, entropy.double().cpu())
             view_correct_sum.index_add_(
                 0,
                 indices,
-                probabilities.argmax(dim=1).eq(targets_gpu).double().cpu(),
+                prediction.eq(targets_gpu).double().cpu(),
             )
+            prediction_counts.index_add_(
+                0,
+                indices,
+                F.one_hot(prediction.cpu(), num_classes=CLASSES).long(),
+            )
+            maximum_probability_sum.index_add_(0, indices, confidence.double().cpu())
+            view_indices = torch.arange(
+                processed_views,
+                processed_views + len(indices),
+                dtype=torch.int64,
+            ) % SELECTION_VIEWS
+            wrong_positions = prediction.ne(targets_gpu).nonzero(as_tuple=False).flatten().cpu()
+            entropy_cpu = entropy.double().cpu()
+            confidence_cpu = confidence.double().cpu()
+            prediction_cpu = prediction.cpu()
+            for position in wrong_positions.tolist():
+                image_index = int(indices[position])
+                value = float(entropy_cpu[position])
+                if value > float(highest_wrong_entropy[image_index]):
+                    highest_wrong_entropy[image_index] = value
+                    highest_wrong_prediction[image_index] = prediction_cpu[position]
+                    highest_wrong_maximum_probability[image_index] = confidence_cpu[position]
+                    highest_wrong_view_index[image_index] = view_indices[position]
             counts.index_add_(0, indices, torch.ones_like(indices))
+            processed_views += len(indices)
             if batch_index % 50 == 0:
                 print(
                     f"views={min((batch_index + 1) * args.batch_size, len(views))}/{len(views)}",
@@ -91,6 +123,8 @@ def main():
     mean_probabilities = (probability_sum / counts[:, None]).float()
     mean_view_entropy = (entropy_sum / counts).float()
     view_correct_rate = (view_correct_sum / counts).float()
+    mean_view_maximum_probability = (maximum_probability_sum / counts).float()
+    modal_prediction = prediction_counts.argmax(dim=1)
     frozen_entropy = torch.tensor(
         [row["calibration_entropy"] for row in frozen_rows], dtype=torch.float32
     )
@@ -108,6 +142,8 @@ def main():
             "image_prediction": "argmax of the probability vector averaged over the same 16 views",
             "maximum_probability": "maximum of the 16-view mean probability vector",
             "correct": "image_prediction equals official true class",
+            "scatter_error_outline": "at least one of the 16 calibration views is predicted incorrectly",
+            "error_strip_prediction": "prediction and maximum probability of the highest-entropy incorrect calibration view",
         },
         "data_root": str(data_root),
         "teacher_checkpoint": str(args.teacher_checkpoint.resolve()),
@@ -121,6 +157,14 @@ def main():
         "mean_probabilities": mean_probabilities,
         "mean_view_normalized_entropy": mean_view_entropy,
         "view_correct_rate": view_correct_rate,
+        "all_views_correct": view_correct_rate.eq(1.0),
+        "prediction_counts": prediction_counts,
+        "modal_view_prediction": modal_prediction,
+        "mean_view_maximum_probability": mean_view_maximum_probability,
+        "highest_wrong_view_entropy": highest_wrong_entropy.float(),
+        "highest_wrong_view_prediction": highest_wrong_prediction,
+        "highest_wrong_view_maximum_probability": highest_wrong_maximum_probability.float(),
+        "highest_wrong_view_index": highest_wrong_view_index,
         "aggregate_prediction": aggregate_prediction,
         "aggregate_maximum_probability": mean_probabilities.max(dim=1).values,
         "aggregate_correct": aggregate_prediction.eq(targets),
@@ -136,6 +180,8 @@ def main():
                 "status": "complete",
                 "images": len(targets),
                 "aggregate_accuracy": float(payload["aggregate_correct"].float().mean()),
+                "mean_view_accuracy": float(view_correct_rate.mean()),
+                "images_with_any_wrong_view": int((view_correct_rate < 1.0).sum()),
                 "max_abs_entropy_delta_vs_frozen": max_entropy_delta,
                 "output": str(args.output.resolve()),
             },
@@ -146,4 +192,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
