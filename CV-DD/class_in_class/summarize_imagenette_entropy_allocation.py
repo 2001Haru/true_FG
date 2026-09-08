@@ -34,6 +34,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--experiment-root", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--experiment-name", default="imagenette_entropy_allocation_v1")
     args = parser.parse_args()
     root = args.experiment_root.resolve()
     conditions = {name: [] for name in ("all_hard", "high_entropy_soft1", "low_entropy_soft1", "all_soft1")}
@@ -90,7 +91,7 @@ def main():
     found = sum(len(values) for values in (conditions["high_entropy_soft1"], conditions["low_entropy_soft1"], top["hard"], top["soft1"]))
     payload = {
         "status": "complete" if found == expected and not errors else "incomplete",
-        "experiment": "imagenette_entropy_allocation_v1",
+        "experiment": args.experiment_name,
         "expected_new_results": expected,
         "found_new_results": found,
         "errors": errors,
@@ -113,4 +114,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

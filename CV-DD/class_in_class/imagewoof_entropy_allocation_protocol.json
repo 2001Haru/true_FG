@@ -1,0 +1,17 @@
+{
+  "name": "imagewoof_entropy_allocation_v1",
+  "parent": "imagewoof_entropy_selection_v1",
+  "images": "exact lambda=0 manifests for selection seeds 0/1/2",
+  "split": "within each true class, top/bottom five by frozen calibration entropy",
+  "conditions": {
+    "all_hard": "existing",
+    "all_soft1": "existing",
+    "high_entropy_soft1": "Soft-1 on high five; Hard CE on low five",
+    "low_entropy_soft1": "Hard CE on high five; Soft-1 on low five"
+  },
+  "pairing": "same manifest, Student initialization, shuffle, augmentation trajectory, image weights and 4000-update budget",
+  "teacher": "same frozen ImageWoof CV-DD ResNet18; T=1; labels current Student augmentation view",
+  "new_runs": "2 conditions x 3 selection seeds x 3 Student seeds = 18",
+  "evaluation_epochs": [200, 400, 600, 800, 1000, 1200, 1333, 1400, 1600, 1666, 1800, 2000],
+  "primary": "paired Final Top-1 difference high_entropy_soft1 - low_entropy_soft1"
+}
