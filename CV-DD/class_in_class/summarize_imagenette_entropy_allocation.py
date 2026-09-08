@@ -38,7 +38,9 @@ def main():
     args = parser.parse_args()
     root = args.experiment_root.resolve()
     conditions = {name: [] for name in ("all_hard", "high_entropy_soft1", "low_entropy_soft1", "all_soft1")}
+    nll_conditions = {name: [] for name in conditions}
     contrasts = {name: [] for name in ("high_minus_low", "high_minus_hard", "low_minus_hard", "all_soft_minus_hard", "allocation_nonadditivity")}
+    nll_contrasts = {name: [] for name in contrasts}
     tuples = []
     errors = []
     for rseed in (0, 1, 2):
@@ -58,8 +60,11 @@ def main():
             if len(manifest_hashes) != 1 or len(initial_hashes) != 1:
                 errors.append(f"pairing mismatch r{rseed}/s{sseed}")
             accuracy = {name: float(row["final_top1"]) for name, row in rows.items()}
+            nll = {name: float(row["final_loss"]) for name, row in rows.items()}
             for name, value in accuracy.items():
                 conditions[name].append(value)
+            for name, value in nll.items():
+                nll_conditions[name].append(value)
             values = {
                 "high_minus_low": accuracy["high_entropy_soft1"] - accuracy["low_entropy_soft1"],
                 "high_minus_hard": accuracy["high_entropy_soft1"] - accuracy["all_hard"],
@@ -69,9 +74,23 @@ def main():
             }
             for name, value in values.items():
                 contrasts[name].append(value)
-            tuples.append({"selection_seed": rseed, "student_seed": sseed, **accuracy, **values})
+            nll_values = {
+                "high_minus_low": nll["high_entropy_soft1"] - nll["low_entropy_soft1"],
+                "high_minus_hard": nll["high_entropy_soft1"] - nll["all_hard"],
+                "low_minus_hard": nll["low_entropy_soft1"] - nll["all_hard"],
+                "all_soft_minus_hard": nll["all_soft1"] - nll["all_hard"],
+                "allocation_nonadditivity": nll["all_soft1"] + nll["all_hard"] - nll["high_entropy_soft1"] - nll["low_entropy_soft1"],
+            }
+            for name, value in nll_values.items():
+                nll_contrasts[name].append(value)
+            tuples.append({
+                "selection_seed": rseed, "student_seed": sseed,
+                "top1": accuracy, "top1_contrasts": values,
+                "nll": nll, "nll_contrasts": nll_values,
+            })
 
     top = {"hard": [], "soft1": []}
+    top_nll = {"hard": [], "soft1": []}
     top_gain = []
     top_runs = []
     for sseed in (42, 43, 44):
@@ -84,8 +103,13 @@ def main():
         if hard["train_manifest_sha256"] != soft["train_manifest_sha256"] or hard["initial_student_state_sha256"] != soft["initial_student_state_sha256"]:
             errors.append(f"Top10 pairing mismatch s{sseed}")
         h, s = float(hard["final_top1"]), float(soft["final_top1"])
+        hn, sn = float(hard["final_loss"]), float(soft["final_loss"])
         top["hard"].append(h); top["soft1"].append(s); top_gain.append(s - h)
-        top_runs.append({"student_seed": sseed, "hard": h, "soft1": s, "soft1_minus_hard": s - h})
+        top_nll["hard"].append(hn); top_nll["soft1"].append(sn)
+        top_runs.append({
+            "student_seed": sseed, "hard": h, "soft1": s, "soft1_minus_hard": s - h,
+            "hard_nll": hn, "soft1_nll": sn, "soft1_minus_hard_nll": sn - hn,
+        })
 
     expected = 24
     found = sum(len(values) for values in (conditions["high_entropy_soft1"], conditions["low_entropy_soft1"], top["hard"], top["soft1"]))
@@ -97,11 +121,16 @@ def main():
         "errors": errors,
         "lambda0_conditions": {name: stats(values) for name, values in conditions.items()},
         "lambda0_paired_contrasts": {name: stats(values) for name, values in contrasts.items()},
+        "lambda0_nll_conditions": {name: stats(values) for name, values in nll_conditions.items()},
+        "lambda0_nll_paired_contrasts": {name: stats(values) for name, values in nll_contrasts.items()},
         "lambda0_tuples": tuples,
         "highest_entropy_top10": {
             "hard": stats(top["hard"]),
             "soft1": stats(top["soft1"]),
             "paired_soft1_minus_hard": stats(top_gain),
+            "hard_nll": stats(top_nll["hard"]),
+            "soft1_nll": stats(top_nll["soft1"]),
+            "paired_soft1_minus_hard_nll": stats(s - h for s, h in zip(top_nll["soft1"], top_nll["hard"])),
             "runs": top_runs,
         },
         "primary_metric": "Final Top-1 at update4000",
