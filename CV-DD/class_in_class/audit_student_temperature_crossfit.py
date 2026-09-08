@@ -230,6 +230,7 @@ def assemble(args):
     if args.task_set == "nontarget_permutation":
         if args.reference_output_root is None:
             raise RuntimeError("--reference-output-root is required for permutation assembly")
+        identity_rows = {}
         for group in ("high", "low"):
             rows = []
             for selection_seed in SELECTION_SEEDS:
@@ -256,6 +257,7 @@ def assemble(args):
                         "permuted_temperature": permuted["temperature_geometric_mean"],
                         "original_temperature": original["temperature_geometric_mean"],
                     })
+            identity_rows[group] = rows
             comparisons[f"{group}_permuted_minus_original"] = {
                 "sign": "positive NLL means permutation is worse than original identity",
                 "raw": stats(row["raw"] for row in rows),
@@ -266,6 +268,23 @@ def assemble(args):
                 ),
                 "tuples": rows,
             }
+        contrast = []
+        for high, low in zip(identity_rows["high"], identity_rows["low"]):
+            if (high["selection_seed"], high["student_seed"]) != (low["selection_seed"], low["student_seed"]):
+                raise RuntimeError("high/low tuple order mismatch")
+            contrast.append({
+                "selection_seed": high["selection_seed"],
+                "student_seed": high["student_seed"],
+                "raw": high["raw"] - low["raw"],
+                "calibrated": high["calibrated"] - low["calibrated"],
+            })
+        comparisons["high_minus_low_identity_value"] = {
+            "definition": "(high permuted - high original) - (low permuted - low original)",
+            "raw": stats(row["raw"] for row in contrast),
+            "calibrated": stats(row["calibrated"] for row in contrast),
+            "calibrated_crossed_fixed_block": crossed_block(contrast, "calibrated"),
+            "tuples": contrast,
+        }
         payload={
             "status":"complete" if len(models)==18 and not errors else "failed",
             "dataset":args.dataset,"task_set":args.task_set,"models":len(models),"folds":FOLDS,
