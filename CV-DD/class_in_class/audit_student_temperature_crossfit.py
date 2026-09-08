@@ -57,8 +57,21 @@ def make_folds(dataset, data_root, dataset_name):
     return fold, digest.hexdigest(), rows, counts
 
 
-def tasks(root):
+def tasks(root, task_set="main"):
     output = []
+    if task_set == "nontarget_permutation":
+        for group in ("high", "low"):
+            supervision = f"{group}_entropy_permuted_soft1"
+            for selection_seed in SELECTION_SEEDS:
+                for student_seed in STUDENT_SEEDS:
+                    result = root / "results/lambda0_nontarget_permutation" / f"rseed{selection_seed}" / f"{supervision}_sseed{student_seed}.json"
+                    output.append({
+                        "condition": supervision, "lambda": 0,
+                        "supervision": supervision,
+                        "selection_seed": selection_seed,
+                        "student_seed": student_seed, "result": result,
+                    })
+        return output
     for lambda_value in LAMBDAS:
         for supervision in ("hard", "soft1"):
             for selection_seed in SELECTION_SEEDS:
@@ -142,7 +155,7 @@ def compute(args):
     device = torch.device(args.device)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    all_tasks = tasks(args.experiment_root)
+    all_tasks = tasks(args.experiment_root, args.task_set)
     for task_index, task in enumerate(all_tasks):
         if task_index % args.shards != args.shard_index:
             continue
@@ -193,7 +206,7 @@ def crossed_block(rows, key):
 
 
 def assemble(args):
-    all_tasks = tasks(args.experiment_root); models = []
+    all_tasks = tasks(args.experiment_root, args.task_set); models = []
     for index, task in enumerate(all_tasks):
         pattern = args.output_root / "models" / f"{index:03d}_{task['condition']}_r{task['selection_seed']}_s{task['student_seed']}.json"
         if not pattern.exists(): raise RuntimeError(f"missing {pattern}")
@@ -214,6 +227,57 @@ def assemble(args):
             "top1": stats(row["source_top1"] for row in group),
         }
     comparisons = {}
+    if args.task_set == "nontarget_permutation":
+        if args.reference_output_root is None:
+            raise RuntimeError("--reference-output-root is required for permutation assembly")
+        for group in ("high", "low"):
+            rows = []
+            for selection_seed in SELECTION_SEEDS:
+                for student_seed in STUDENT_SEEDS:
+                    permuted = next(
+                        row for row in models
+                        if row["condition"] == f"{group}_entropy_permuted_soft1"
+                        and row["selection_seed"] == selection_seed
+                        and row["student_seed"] == student_seed
+                    )
+                    matches = list((args.reference_output_root / "models").glob(
+                        f"*_{group}_entropy_soft1_r{selection_seed}_s{student_seed}.json"
+                    ))
+                    if len(matches) != 1:
+                        raise RuntimeError(f"expected one original calibration result, found {len(matches)}: {matches}")
+                    original = json.loads(matches[0].read_text(encoding="utf-8"))
+                    if original["fold_assignment_sha256"] != permuted["fold_assignment_sha256"]:
+                        raise RuntimeError("original/permuted fold mismatch")
+                    rows.append({
+                        "selection_seed": selection_seed,
+                        "student_seed": student_seed,
+                        "raw": permuted["raw_final_nll_recomputed"] - original["raw_final_nll_recomputed"],
+                        "calibrated": permuted["crossfit_calibrated_nll"] - original["crossfit_calibrated_nll"],
+                        "permuted_temperature": permuted["temperature_geometric_mean"],
+                        "original_temperature": original["temperature_geometric_mean"],
+                    })
+            comparisons[f"{group}_permuted_minus_original"] = {
+                "sign": "positive NLL means permutation is worse than original identity",
+                "raw": stats(row["raw"] for row in rows),
+                "calibrated": stats(row["calibrated"] for row in rows),
+                "calibrated_crossed_fixed_block": crossed_block(rows, "calibrated"),
+                "temperature_ratio_permuted_over_original": stats(
+                    row["permuted_temperature"] / row["original_temperature"] for row in rows
+                ),
+                "tuples": rows,
+            }
+        payload={
+            "status":"complete" if len(models)==18 and not errors else "failed",
+            "dataset":args.dataset,"task_set":args.task_set,"models":len(models),"folds":FOLDS,
+            "fold_assignment_sha256":next(iter(fold_hashes)),"conditions":conditions,
+            "comparisons":comparisons,"errors":errors,
+            "reference_output_root":str(args.reference_output_root),
+            "diagnostic_only":"official test labels used in fixed 5-fold stratified cross-fitting; original Final metrics remain primary",
+        }
+        atomic_json(args.output_root / "temperature_crossfit_summary.json",payload)
+        print(json.dumps({"status":payload["status"],"models":len(models),"errors":errors},indent=2))
+        if payload["status"]!="complete":raise RuntimeError("temperature audit incomplete")
+        return
     for lambda_value in LAMBDAS:
         rows = []
         for selection_seed in SELECTION_SEEDS:
@@ -242,9 +306,11 @@ def main():
     parser.add_argument("--experiment-root",required=True,type=Path)
     parser.add_argument("--data-root",required=True,type=Path)
     parser.add_argument("--output-root",required=True,type=Path)
+    parser.add_argument("--task-set", choices=("main", "nontarget_permutation"), default="main")
+    parser.add_argument("--reference-output-root", type=Path)
     parser.add_argument("--shard-index",default=0,type=int);parser.add_argument("--shards",default=1,type=int)
     parser.add_argument("--workers",default=8,type=int);parser.add_argument("--device",default="cuda");parser.add_argument("--force",action="store_true")
-    args=parser.parse_args();args.experiment_root=args.experiment_root.resolve();args.data_root=args.data_root.resolve();args.output_root=args.output_root.resolve();torch.set_num_threads(1)
+    args=parser.parse_args();args.experiment_root=args.experiment_root.resolve();args.data_root=args.data_root.resolve();args.output_root=args.output_root.resolve();args.reference_output_root = None if args.reference_output_root is None else args.reference_output_root.resolve();torch.set_num_threads(1)
     if args.phase=="compute":compute(args)
     else:assemble(args)
 
