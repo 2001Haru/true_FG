@@ -312,11 +312,11 @@ def get_args():
         if args.adamw_lr_override <= 0:
             raise ValueError('--adamw-lr-override must be positive')
         args.adamw_lr = args.adamw_lr_override
-    separate_lrs = (args.adamw_backbone_lr is not None,
-                    args.adamw_head_lr is not None)
-    if separate_lrs[0] != separate_lrs[1]:
+    args.separate_lrs = (args.adamw_backbone_lr is not None,
+                         args.adamw_head_lr is not None)
+    if args.separate_lrs[0] != args.separate_lrs[1]:
         raise ValueError('--adamw-backbone-lr and --adamw-head-lr must be provided together')
-    if separate_lrs[0] and (args.adamw_backbone_lr <= 0 or args.adamw_head_lr <= 0):
+    if args.separate_lrs[0] and (args.adamw_backbone_lr <= 0 or args.adamw_head_lr <= 0):
         raise ValueError('separate AdamW learning rates must be positive')
     if not (0 <= args.adamw_beta1 < 1 and 0 <= args.adamw_beta2 < 1):
         raise ValueError('AdamW betas must lie in [0,1)')
@@ -507,14 +507,14 @@ def main():
 
     args.optimizer_group_metadata = None
     if args.sgd:
-        if separate_lrs[0]:
+        if args.separate_lrs[0]:
             raise ValueError('separate backbone/head LRs are supported only with AdamW')
         optimizer = torch.optim.SGD(get_parameters(model),
                                     lr=args.sgd_lr,
                                     momentum=args.momentum,
                                     weight_decay=args.weight_decay)
     else:
-        if separate_lrs[0]:
+        if args.separate_lrs[0]:
             parameter_groups = get_finetune_parameter_groups(
                 model, args.adamw_backbone_lr, args.adamw_head_lr,
                 args.adamw_weight_decay,

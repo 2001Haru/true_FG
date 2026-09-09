@@ -116,10 +116,15 @@ execute_task() {
         for student_seed in "${SEEDS[@]}"; do
             run_eval "$dataset" "$teacher_seed" "$recovery_seed" "$ipc" "$student_seed" "$task_log" &
             pids+=("$!")
-            if (( ${#pids[@]} == EVAL_CONCURRENCY )); then wait_batch "${pids[@]}"; pids=(); fi
+            if (( ${#pids[@]} == EVAL_CONCURRENCY )); then
+                if ! wait_batch "${pids[@]}"; then return 1; fi
+                pids=()
+            fi
         done
     done
-    if (( ${#pids[@]} )); then wait_batch "${pids[@]}"; fi
+    if (( ${#pids[@]} )); then
+        if ! wait_batch "${pids[@]}"; then return 1; fi
+    fi
     echo "$(timestamp) gpu=$GPU_ID task=$task_id complete" > "$complete"
     rm -f "$running"; trap - EXIT
 }
