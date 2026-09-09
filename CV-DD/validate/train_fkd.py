@@ -19,7 +19,9 @@ except ImportError:
     wandb = None
 from torch.optim.lr_scheduler import LambdaLR
 from torchvision.transforms import InterpolationMode
-from utils_validate import AverageMeter, accuracy, get_parameters, load_val_loader, load_small_dataset_model
+from utils_validate import (AverageMeter, accuracy, get_parameters,
+                            get_finetune_parameter_groups, load_val_loader,
+                            load_small_dataset_model)
 # It is imported for you to access and modify the PyTorch source code (via Ctrl+Click), more details in README.md
 from torch.utils.data._utils.fetch import _MapDatasetFetcher
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -111,6 +113,18 @@ def get_args():
                         default=0.01, help='adamw weight decay')
     parser.add_argument('--adamw-lr-override', type=float, default=None,
                         help='override the dataset/model-specific AdamW learning rate')
+    parser.add_argument('--adamw-backbone-lr', type=float, default=None,
+                        help='separate AdamW LR for all parameters outside the classifier head')
+    parser.add_argument('--adamw-head-lr', type=float, default=None,
+                        help='separate AdamW LR for the classifier head')
+    parser.add_argument('--adamw-beta1', type=float, default=0.9)
+    parser.add_argument('--adamw-beta2', type=float, default=0.999)
+    parser.add_argument('--adamw-eps', type=float, default=1e-8)
+    parser.add_argument('--cosine-t-max', type=int, default=None,
+                        help='use epoch-stepped CosineAnnealingLR with this T_max')
+    parser.add_argument('--cosine-eta-min', type=float, default=0.0)
+    parser.add_argument('--student-protocol-name', type=str, default=None,
+                        help='optional protocol identity recorded in result JSON')
     parser.add_argument('--eta-override', type=float, default=None,
                         help='override the dataset/model-specific cosine eta')
     parser.add_argument('--model', type=str,
@@ -298,6 +312,23 @@ def get_args():
         if args.adamw_lr_override <= 0:
             raise ValueError('--adamw-lr-override must be positive')
         args.adamw_lr = args.adamw_lr_override
+    separate_lrs = (args.adamw_backbone_lr is not None,
+                    args.adamw_head_lr is not None)
+    if separate_lrs[0] != separate_lrs[1]:
+        raise ValueError('--adamw-backbone-lr and --adamw-head-lr must be provided together')
+    if separate_lrs[0] and (args.adamw_backbone_lr <= 0 or args.adamw_head_lr <= 0):
+        raise ValueError('separate AdamW learning rates must be positive')
+    if not (0 <= args.adamw_beta1 < 1 and 0 <= args.adamw_beta2 < 1):
+        raise ValueError('AdamW betas must lie in [0,1)')
+    if args.adamw_eps <= 0:
+        raise ValueError('--adamw-eps must be positive')
+    if args.cosine_t_max is not None:
+        if args.cosine_t_max <= 0:
+            raise ValueError('--cosine-t-max must be positive')
+        if args.cos or args.eta_override is not None:
+            raise ValueError('--cosine-t-max is an independent scheduler; omit --cos/--eta-override')
+        if args.cosine_eta_min < 0:
+            raise ValueError('--cosine-eta-min must be nonnegative')
     if args.eta_override is not None:
         if args.eta_override <= 0:
             raise ValueError('--eta-override must be positive')
@@ -474,17 +505,42 @@ def main():
     model = model.cuda()
     model.train()
 
+    args.optimizer_group_metadata = None
     if args.sgd:
+        if separate_lrs[0]:
+            raise ValueError('separate backbone/head LRs are supported only with AdamW')
         optimizer = torch.optim.SGD(get_parameters(model),
                                     lr=args.sgd_lr,
                                     momentum=args.momentum,
                                     weight_decay=args.weight_decay)
     else:
-        optimizer = torch.optim.AdamW(get_parameters(model),
-                                      lr=args.adamw_lr,
-                                      weight_decay=args.adamw_weight_decay)
+        if separate_lrs[0]:
+            parameter_groups = get_finetune_parameter_groups(
+                model, args.adamw_backbone_lr, args.adamw_head_lr,
+                args.adamw_weight_decay,
+            )
+            args.optimizer_group_metadata = [
+                {
+                    'group_name': group['group_name'],
+                    'initial_lr': group['lr'],
+                    'weight_decay': group['weight_decay'],
+                    'parameter_names': group['parameter_names'],
+                }
+                for group in parameter_groups
+            ]
+        else:
+            parameter_groups = get_parameters(model)
+        optimizer = torch.optim.AdamW(
+            parameter_groups, lr=args.adamw_lr,
+            betas=(args.adamw_beta1, args.adamw_beta2), eps=args.adamw_eps,
+            weight_decay=args.adamw_weight_decay,
+        )
 
-    if args.cos == True:
+    if args.cosine_t_max is not None:
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=args.cosine_t_max, eta_min=args.cosine_eta_min,
+        )
+    elif args.cos == True:
         scheduler = LambdaLR(optimizer,
                              lambda step: 0.5 * (1. + math.cos(math.pi * step / args.epochs / args.eta)) if step <= args.epochs else 0, last_epoch=-1)
     else:
@@ -759,9 +815,29 @@ def export_per_class_accuracy(model, args, best_acc1):
         'synthetic_data_path': os.path.abspath(args.original_data_path),
         'fkd_path': (os.path.abspath(args.fkd_path) if args.fkd_path else None),
         'optimizer': ('sgd' if args.sgd else 'adamw'),
-        'learning_rate': (args.lr if args.sgd else args.adamw_lr),
+        'learning_rate': (args.sgd_lr if args.sgd else
+                          None if args.adamw_backbone_lr is not None else args.adamw_lr),
+        'backbone_learning_rate': args.adamw_backbone_lr,
+        'head_learning_rate': args.adamw_head_lr,
         'weight_decay': args.adamw_weight_decay,
-        'cosine_eta': args.eta,
+        'optimizer_betas': ([args.adamw_beta1, args.adamw_beta2]
+                            if not args.sgd else None),
+        'optimizer_eps': (args.adamw_eps if not args.sgd else None),
+        'optimizer_parameter_groups': args.optimizer_group_metadata,
+        'scheduler': ('cosine_annealing' if args.cosine_t_max is not None
+                      else 'cosine_lambda' if args.cos else 'linear_lambda'),
+        'scheduler_t_max': args.cosine_t_max,
+        'scheduler_eta_min': (args.cosine_eta_min
+                              if args.cosine_t_max is not None else None),
+        'scheduler_step_unit': 'epoch',
+        'scheduler_step_timing': 'after_epoch',
+        'final_scheduler_lrs': args.scheduler.get_last_lr(),
+        'cosine_eta': (None if args.cosine_t_max is not None else args.eta),
+        'student_protocol_name': args.student_protocol_name,
+        'temperature_squared_multiplier': False,
+        'hard_cross_entropy_mixture': bool(args.hard_label),
+        'label_smoothing': 0.0,
+        'gradient_clipping': None,
         'dataloader_workers': args.workers,
         'persistent_workers': bool(args.persistent_workers),
         'num_classes': output_classes,

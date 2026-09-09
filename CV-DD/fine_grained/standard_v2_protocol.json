@@ -1,0 +1,79 @@
+{
+  "name": "fine_grained_sre2l_standard_protocol",
+  "version": "v2",
+  "inherits": "fine_grained_sre2l_standard_protocol_v1_except_fields_below",
+  "datasets": [
+    "CUB_imsize224",
+    "A_imsize224",
+    "SC_imsize224"
+  ],
+  "ipcs": [1, 3, 5],
+  "teacher_seeds": [42, 43, 44],
+  "recovery_seeds": [42, 43, 44],
+  "student_seeds": [42, 43, 44],
+  "recovery_iterations": {
+    "CUB_imsize224": 4000,
+    "A_imsize224": 4000,
+    "SC_imsize224": 4000
+  },
+  "student": {
+    "architecture": "torchvision_resnet18",
+    "initialization": "torchvision_ResNet18_Weights_IMAGENET1K_V1",
+    "batchnorm_initialization": "load_affine_and_running_statistics_from_imagenet_v1",
+    "classifier": "new_random_linear_layer_for_dataset_class_count",
+    "fine_tuning": "all_parameters_from_first_epoch",
+    "batchnorm_training": "train_microbatch_statistics_and_update_running_statistics",
+    "batchnorm_evaluation": "eval_mode_running_statistics"
+  },
+  "optimizer": {
+    "name": "AdamW",
+    "betas": [0.9, 0.999],
+    "eps": 1e-8,
+    "backbone_initial_lr": 0.0001,
+    "classifier_initial_lr": 0.001,
+    "matrix_weight_decay": 1e-5,
+    "bias_and_batchnorm_weight_decay": 0.0,
+    "gradient_clipping": null
+  },
+  "scheduler": {
+    "name": "CosineAnnealingLR",
+    "t_max": 400,
+    "eta_min": 0.0,
+    "step_unit": "epoch",
+    "step_timing": "after_epoch",
+    "warmup_epochs": 0,
+    "restarts": false,
+    "epochs": 400,
+    "last_training_epoch_lr_semantics": "epoch_399_uses_lr0_times_(1+cos(pi*399/400))/2_then_final_step_reaches_zero"
+  },
+  "distillation": {
+    "loss": "KLDivLoss",
+    "reduction": "batchmean",
+    "teacher_temperature": 20.0,
+    "student_temperature": 20.0,
+    "temperature_squared_multiplier": false,
+    "hard_cross_entropy_mixture": false,
+    "label_smoothing": 0.0
+  },
+  "inherited_data_flow": {
+    "cutmix": "replay_v1_fkd",
+    "cutmix_alpha": 1.0,
+    "augmentation": "replay_v1_saved_rrc_flip_and_cutmix",
+    "fkd_seed": 42,
+    "gradient_accumulation_steps": 2,
+    "batch_size": {
+      "CUB_imsize224": 20,
+      "A_imsize224": 20,
+      "SC_imsize224": 14
+    },
+    "student_forward_microbatch": {
+      "CUB_imsize224": 10,
+      "A_imsize224": 10,
+      "SC_imsize224": 7
+    },
+    "dataloader_workers": 8,
+    "persistent_workers": true,
+    "prefetch_factor": 2,
+    "pin_memory": true
+  }
+}

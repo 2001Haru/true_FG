@@ -80,6 +80,45 @@ def get_parameters(model):
         params=group_no_weight_decay, weight_decay=0.)]
     return groups
 
+
+def get_finetune_parameter_groups(model, backbone_lr, head_lr, weight_decay,
+                                  head_prefix='fc.'):
+    """Build explicit backbone/head and decay/no-decay AdamW groups.
+
+    CV-DD's decay rule is preserved: only matrix/tensor weights (ndim > 1)
+    decay; biases, BatchNorm affine parameters, and every other 1-D
+    parameter do not.
+    """
+    buckets = {
+        ('backbone', 'decay'): [],
+        ('backbone', 'no_decay'): [],
+        ('head', 'decay'): [],
+        ('head', 'no_decay'): [],
+    }
+    names = {key: [] for key in buckets}
+    for name, parameter in model.named_parameters():
+        component = 'head' if name.startswith(head_prefix) else 'backbone'
+        decay = 'decay' if 'weight' in name and parameter.ndim > 1 else 'no_decay'
+        buckets[(component, decay)].append(parameter)
+        names[(component, decay)].append(name)
+    groups = []
+    for component, decay in (
+        ('backbone', 'decay'), ('backbone', 'no_decay'),
+        ('head', 'decay'), ('head', 'no_decay'),
+    ):
+        if not buckets[(component, decay)]:
+            continue
+        groups.append({
+            'params': buckets[(component, decay)],
+            'lr': backbone_lr if component == 'backbone' else head_lr,
+            'weight_decay': weight_decay if decay == 'decay' else 0.0,
+            'group_name': f'{component}_{decay}',
+            'parameter_names': names[(component, decay)],
+        })
+    grouped = sum(len(group['params']) for group in groups)
+    assert grouped == len(list(model.parameters()))
+    return groups
+
 def load_small_dataset_model(model, args):
     if model == 'ResNet18':
         net = ResNet18(args.ncls)

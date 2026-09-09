@@ -23,6 +23,11 @@ STUDENT_INITIALIZATION="${STUDENT_INITIALIZATION:-random}"
 STUDENT_ADAMW_LR="${STUDENT_ADAMW_LR:-1e-3}"
 STUDENT_ADAMW_WEIGHT_DECAY="${STUDENT_ADAMW_WEIGHT_DECAY:-1e-5}"
 STUDENT_ETA="${STUDENT_ETA:-2}"
+STUDENT_PROTOCOL_NAME="${STUDENT_PROTOCOL_NAME:-standard_protocol_v1}"
+STUDENT_BACKBONE_LR="${STUDENT_BACKBONE_LR:-}"
+STUDENT_HEAD_LR="${STUDENT_HEAD_LR:-}"
+STUDENT_COSINE_T_MAX="${STUDENT_COSINE_T_MAX:-}"
+STUDENT_COSINE_ETA_MIN="${STUDENT_COSINE_ETA_MIN:-0}"
 RESULT_ROOT="${RESULT_ROOT:-$EXP_ROOT/results}"
 POST_EVAL_ROOT="${POST_EVAL_ROOT:-$EXP_ROOT/post_eval}"
 
@@ -211,19 +216,35 @@ PY
         if [[ "$EVAL_PERSISTENT_WORKERS" == 1 ]]; then
             persistent_workers_arg+=(--persistent-workers)
         fi
+        optimizer_args=(
+            --adamw-weight-decay "$STUDENT_ADAMW_WEIGHT_DECAY"
+            --adamw-beta1 0.9 --adamw-beta2 0.999 --adamw-eps 1e-8
+        )
+        scheduler_args=()
+        if [[ -n "$STUDENT_BACKBONE_LR" || -n "$STUDENT_HEAD_LR" ]]; then
+            [[ -n "$STUDENT_BACKBONE_LR" && -n "$STUDENT_HEAD_LR" ]] || \
+                fail "both STUDENT_BACKBONE_LR and STUDENT_HEAD_LR are required"
+            optimizer_args+=(--adamw-backbone-lr "$STUDENT_BACKBONE_LR" --adamw-head-lr "$STUDENT_HEAD_LR")
+        else
+            optimizer_args+=(--adamw-lr-override "$STUDENT_ADAMW_LR")
+        fi
+        if [[ -n "$STUDENT_COSINE_T_MAX" ]]; then
+            scheduler_args+=(--cosine-t-max "$STUDENT_COSINE_T_MAX" --cosine-eta-min "$STUDENT_COSINE_ETA_MIN")
+        else
+            scheduler_args+=(--cos --eta-override "$STUDENT_ETA")
+        fi
         python -u "$ROOT_DIR/validate/train_fkd.py" \
             --model ResNet18 --ipc "$IPC" \
             --exp-name "sre2l_${DATASET}_ipc${IPC}_rseed${RUN_SEED}_sseed${STUDENT_SEED}" \
             --original-data-path "$syn" --fkd-path "$fkd_actual" \
             --output-dir "$POST_EVAL_ROOT" --batch-size "$FKD_BATCH" --epochs 400 \
             --dataset-name "$DATASET" --gradient-accumulation-steps "$ACCUMULATION" \
-            --mix-type cutmix --cos --workers "$EVAL_WORKERS" --fkd_seed 42 \
+            --mix-type cutmix --workers "$EVAL_WORKERS" --fkd_seed 42 \
             "${persistent_workers_arg[@]}" \
             --train-seed "$STUDENT_SEED" --temperature "$STUDENT_TEMPERATURE" \
             --student-initialization "$STUDENT_INITIALIZATION" \
-            --adamw-lr-override "$STUDENT_ADAMW_LR" \
-            --adamw-weight-decay "$STUDENT_ADAMW_WEIGHT_DECAY" \
-            --eta-override "$STUDENT_ETA" \
+            --student-protocol-name "$STUDENT_PROTOCOL_NAME" \
+            "${optimizer_args[@]}" "${scheduler_args[@]}" \
             --val-dir "$DATA_DIR/test" --disable-wandb --per-class-output "$result"
         python "$ROOT_DIR/fine_grained/audit_result.py" \
             --result "$result" --classes "$CLASSES" --validation-images "$VAL_IMAGES"
