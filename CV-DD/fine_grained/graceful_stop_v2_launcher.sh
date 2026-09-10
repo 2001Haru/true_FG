@@ -5,6 +5,8 @@ V2_ROOT="${V2_ROOT:-/linxi/dataset/FG_SRe2L_standard/v2}"
 LAUNCHER_PID="${LAUNCHER_PID:?set LAUNCHER_PID}"
 WORKER_PIDS="${WORKER_PIDS:?set WORKER_PIDS}"
 WAIT_TASKS="${WAIT_TASKS:?set WAIT_TASKS to space-separated task ids}"
+WORKER_PIDS="${WORKER_PIDS//,/ }"
+WAIT_TASKS="${WAIT_TASKS//,/ }"
 STOP_NAME="${STOP_NAME:-graceful_stop}"
 POLL_SECONDS="${POLL_SECONDS:-30}"
 
