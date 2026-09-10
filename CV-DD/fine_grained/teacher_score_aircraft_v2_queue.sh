@@ -42,7 +42,8 @@ PY
 relabel_one(){
   local method="$1" ipc="$2" gpu="$3"
   local images="$SELECTION_ROOT/selected/$method/ipc${ipc}"
-  local base="$EXP_ROOT/fkd/$method/ipc${ipc}" actual="${base}_bs20_ipc${ipc}"
+  local base="$EXP_ROOT/fkd/$method/ipc${ipc}"
+  local actual="${base}_bs20_ipc${ipc}"
   local expected=$((400*100*ipc/20)) count=0 log="$LOG_ROOT/relabel_${method}_ipc${ipc}.log"
   [[ -d "$actual" ]] && count="$(find "$actual" -type f -name 'batch_*.tar' | wc -l)"
   if (( count != expected )); then
