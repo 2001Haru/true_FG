@@ -170,9 +170,32 @@ launcher_main() {
     echo "$(timestamp) launcher complete" > "$STATUS_ROOT/launcher.complete"
 }
 
+join_main() {
+    local join_name="${JOIN_NAME:-joining_node}"
+    exec 9>"$LOCK_ROOT/${join_name}.lock"
+    flock -n 9 || { echo "$join_name already running" >&2; exit 1; }
+    echo "$(timestamp) $join_name started" > "$STATUS_ROOT/${join_name}.running"
+    local pids=() gpu failed=0 pid
+    for gpu in $GPUS; do
+        bash "$0" worker "$gpu" > "$LOG_ROOT/worker_${join_name}_gpu${gpu}.log" 2>&1 &
+        pids+=("$!")
+    done
+    for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+    if (( failed )); then
+        rm -f "$STATUS_ROOT/${join_name}.running"
+        echo "$(timestamp) $join_name failed" > "$STATUS_ROOT/${join_name}.failed"
+        return 1
+    fi
+    python "$ROOT_DIR/fine_grained/summarize_standard_v2_matrix.py" \
+        --v2-root "$V2_ROOT" > "$LOG_ROOT/summary.log" 2>&1
+    rm -f "$STATUS_ROOT/${join_name}.running" "$STATUS_ROOT/launcher.failed"
+    echo "$(timestamp) $join_name complete" > "$STATUS_ROOT/${join_name}.complete"
+}
+
 case "$MODE" in
     prepare) write_definition ;;
     launch) launcher_main ;;
+    join) join_main ;;
     worker) worker_main ;;
-    *) echo "usage: $0 [prepare|launch|worker GPU]" >&2; exit 2 ;;
+    *) echo "usage: $0 [prepare|launch|join|worker GPU]" >&2; exit 2 ;;
 esac
