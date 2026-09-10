@@ -14,6 +14,9 @@ GPUS="${GPUS:-0 1}"
 SEEDS=(42 43 44)
 IPCS=(1 3 5)
 DATASETS=(CUB_imsize224 A_imsize224 SC_imsize224)
+if [[ -n "${DATASET_FILTER:-}" ]]; then
+    read -r -a DATASETS <<< "$DATASET_FILTER"
+fi
 LOG_ROOT="$V2_ROOT/logs"
 STATUS_ROOT="$V2_ROOT/status"
 LOCK_ROOT="$V2_ROOT/locks"
@@ -185,6 +188,18 @@ join_main() {
         rm -f "$STATUS_ROOT/${join_name}.running"
         echo "$(timestamp) $join_name failed" > "$STATUS_ROOT/${join_name}.failed"
         return 1
+    fi
+    if [[ "${JOIN_WAIT_FOR_GLOBAL_COMPLETION:-1}" == 1 ]]; then
+        while true; do
+            local completed
+            completed="$(find "$V2_ROOT/results" -type f -name '*.json' 2>/dev/null | wc -l)"
+            (( completed >= 243 )) && break
+            if compgen -G "$STATUS_ROOT/*.failed" > /dev/null; then
+                echo "a task failed while $join_name waited for global completion" >&2
+                return 1
+            fi
+            sleep 30
+        done
     fi
     python "$ROOT_DIR/fine_grained/summarize_standard_v2_matrix.py" \
         --v2-root "$V2_ROOT" > "$LOG_ROOT/summary.log" 2>&1
