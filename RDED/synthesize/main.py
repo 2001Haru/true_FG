@@ -71,6 +71,13 @@ def save_images(args, images, class_id):
 
 def main(args):
     print(args)
+    # The released entry point exposed --seed but only applied it later in
+    # validation.  Seed synthesis explicitly so candidate shuffling and crop
+    # sampling are reproducible as well.
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
     with torch.no_grad():
         if not os.path.exists(args.syn_data_path):
             os.makedirs(args.syn_data_path)
