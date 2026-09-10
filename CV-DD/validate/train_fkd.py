@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -34,6 +35,18 @@ from relabel.utils_fkd import (ComposeWithCoords, ImageFolder_FKD_MIX,
                                SelectQuadrantWithRes, mix_aug)
 
 _original_map_dataset_fetch = _MapDatasetFetcher.fetch
+
+
+def state_dict_sha256(state_dict):
+    """Stable hash of an initialized model before any optimizer update."""
+    digest = hashlib.sha256()
+    for name, tensor in sorted(state_dict.items()):
+        value = tensor.detach().cpu().contiguous()
+        digest.update(name.encode('utf-8'))
+        digest.update(str(value.dtype).encode('ascii'))
+        digest.update(str(tuple(value.shape)).encode('ascii'))
+        digest.update(value.numpy().tobytes())
+    return digest.hexdigest()
 
 
 def _cvdd_fkd_map_dataset_fetch(self, possibly_batched_index):
@@ -504,6 +517,7 @@ def main():
                 model.fc = nn.Linear(model.fc.in_features, args.ncls)
     else:
         raise ValueError('model not supported')
+    args.initial_model_sha256 = state_dict_sha256(model.state_dict())
     model = model.cuda()
     model.train()
 
@@ -808,6 +822,7 @@ def export_per_class_accuracy(model, args, best_acc1):
         'training_target': ('hard_coarse_label' if args.hard_label else 'fkd_soft_label'),
         'student_initialization': args.student_initialization,
         'student_seed': args.train_seed,
+        'initial_model_sha256': args.initial_model_sha256,
         'epochs': args.epochs,
         'batch_size': args.batch_size,
         'gradient_accumulation_steps': args.gradient_accumulation_steps,
