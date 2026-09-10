@@ -50,6 +50,8 @@ def write_relabel_manifest(args, ipc, status):
         'teacher_mode': ('eval' if args.eval_mode == 'T' else 'train'),
         'epochs': args.epochs,
         'batch_size': args.batch_size,
+        'teacher_forward_split': [args.batch_size // 2,
+                                  args.batch_size - args.batch_size // 2],
         'workers': args.workers,
         'persistent_workers': bool(args.persistent_workers),
         'prefetch_factor': args.prefetch_factor,

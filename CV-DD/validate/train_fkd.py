@@ -565,6 +565,7 @@ def main():
 
  
     args.best_acc1=0
+    args.best_epoch = None
     args.last_validation_top1 = None
     args.optimizer = optimizer
     args.scheduler = scheduler
@@ -599,6 +600,8 @@ def main():
 
         # remember best acc@1 and save checkpoint
         is_best = top1 > args.best_acc1
+        if is_best:
+            args.best_epoch = epoch
         args.best_acc1 = max(top1, args.best_acc1)
         save_checkpoint({
             'epoch': epoch + 1,
@@ -818,7 +821,9 @@ def export_per_class_accuracy(model, args, best_acc1):
         })
     payload = {
         'best_top1': float(best_acc1),
+        'best_epoch': args.best_epoch,
         'final_epoch_top1': args.last_validation_top1,
+        'final_epoch': args.epochs - 1,
         'training_target': ('hard_coarse_label' if args.hard_label else 'fkd_soft_label'),
         'student_initialization': args.student_initialization,
         'student_seed': args.train_seed,
@@ -826,6 +831,8 @@ def export_per_class_accuracy(model, args, best_acc1):
         'epochs': args.epochs,
         'batch_size': args.batch_size,
         'gradient_accumulation_steps': args.gradient_accumulation_steps,
+        'optimizer_updates_per_epoch': len(args.train_loader),
+        'total_optimizer_updates': args.epochs * len(args.train_loader),
         'temperature': args.temperature,
         'fkd_seed': args.fkd_seed,
         'mix_type': args.mix_type,

@@ -1,0 +1,91 @@
+{
+  "name": "imagenette_cvdd_native_resolution_ablation",
+  "version": "v1_prelaunch",
+  "dataset": "imagenet-nette",
+  "ipcs": [10, 50],
+  "source_selection": {
+    "method": "per_class_entropy_t20_ascending",
+    "teacher_mode": "eval",
+    "temperature": 20,
+    "tie_break": "sample_id ascending",
+    "scoring_view": "RGB -> PIL bilinear warp 224x224 -> Tensor -> ImageNet normalize",
+    "nested": true,
+    "reason": "Match the Aircraft H20 source-selection rule while keeping one deterministic source set."
+  },
+  "views": {
+    "a_image": "selected source decoded as RGB then PIL-bilinear warped to 224x224 and saved with PIL default JPEG",
+    "shared_cache": "decode A JPEG, PIL-bilinear 224x224 to 112x112, lossless PNG",
+    "b_image": "shared 112x112 cache PIL-bilinear upsampled to 224x224 and saved with PIL default JPEG"
+  },
+  "teacher": {
+    "architecture": "torchvision ResNet18 with 10-class head",
+    "checkpoint_dir": "/linxi/dataset/CV-DD/offline_models/imagenet-nette",
+    "relabel_mode": "train (BSSL)",
+    "temperature": 20,
+    "forward_split": [5, 5]
+  },
+  "fkd": {
+    "sets": 2,
+    "source": "A image only, one FKD set per IPC",
+    "epochs": 300,
+    "batch_size": 10,
+    "workers": 2,
+    "persistent_workers": false,
+    "rrc_output": 224,
+    "rrc_scale": [0.08, 1.0],
+    "flip": true,
+    "cutmix_alpha": 1.0,
+    "fp16_raw_logits": true,
+    "normalization": "ImageNet mean/std",
+    "seed": 42,
+    "fkd_seed": 42
+  },
+  "student": {
+    "architecture": "torchvision ResNet18",
+    "initialization": "random including default BN and random 10-class head",
+    "full_network_training": true,
+    "student_seeds": [42, 43, 44],
+    "optimizer": "AdamW",
+    "learning_rate": 0.0005,
+    "weight_decay_matrix_weights": 0.01,
+    "weight_decay_bias_bn": 0.0,
+    "betas": [0.9, 0.999],
+    "eps": 1e-8,
+    "epochs": 300,
+    "batch_size": 10,
+    "gradient_accumulation_steps": 2,
+    "forward_micro_batch": 5,
+    "loss": "KLDivLoss(batchmean)",
+    "teacher_temperature": 20,
+    "student_temperature": 20,
+    "temperature_squared_multiplier": false,
+    "warmup_epochs": 0,
+    "scheduler": {
+      "formula": "0.5 * (1 + cos(pi * epoch / (300 * eta)))",
+      "ipc10_eta": 1,
+      "ipc50_eta": 2,
+      "step_unit": "epoch",
+      "step_timing": "after epoch"
+    },
+    "workers": 2,
+    "persistent_workers": false
+  },
+  "batch_correction": {
+    "paper": 10,
+    "relabel_constants": 10,
+    "validate_constants": 16,
+    "chosen": 10,
+    "reason": "Paper and Relabel agree, and repository README requires Student batch to match Relabel."
+  },
+  "expected_optimizer_updates": {
+    "ipc10": 3000,
+    "ipc50": 15000
+  },
+  "validation": {
+    "split": "complete ImageNette test ImageFolder",
+    "images": 3925,
+    "transform": "Resize(256) -> CenterCrop(224) -> ToTensor -> ImageNet normalize",
+    "metrics": ["Best Top-1", "Best epoch", "Final Top-1 at epoch 299"]
+  },
+  "new_student_trainings": 12
+}
