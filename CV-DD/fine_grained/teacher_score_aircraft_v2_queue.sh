@@ -92,9 +92,10 @@ main(){
   rm -f "$STATUS_ROOT/launcher.failed" "$STATUS_ROOT/launcher.complete"
   echo "$(timestamp) started" > "$STATUS_ROOT/launcher.running"
   CUDA_VISIBLE_DEVICES="${GPUS[0]}" PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python \
+    OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
     python -u "$ROOT_DIR/CV-DD/fine_grained/prepare_teacher_score_real_fg.py" \
       --data-dir "$DATA_ROOT/A_imsize224" --teacher "$TEACHER_DIR/ResNet18.pth" \
-      --output-root "$SELECTION_ROOT" --batch-size 256 --workers 8 --skip-completed \
+      --output-root "$SELECTION_ROOT" --batch-size 256 --workers 0 --skip-completed \
       > "$LOG_ROOT/selection.log" 2>&1
   local ce_flag
   ce_flag="$(python - "$SELECTION_MANIFEST" <<'PY'
