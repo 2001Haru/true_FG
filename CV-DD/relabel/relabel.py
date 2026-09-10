@@ -18,7 +18,8 @@ from torchvision.transforms import InterpolationMode
 from tqdm import tqdm
 from utils_fkd import (ComposeWithCoords, ImageFolder_FKD_MIX,
                        RandomHorizontalFlipWithRes,
-                       RandomResizedCropWithCoords, mix_aug, load_model,count_jpg_files)
+                       RandomResizedCropWithCoords, SelectQuadrantWithRes,
+                       mix_aug, load_model,count_jpg_files)
 import platform
 import sys
 # get the directory of the current file
@@ -59,6 +60,10 @@ def write_relabel_manifest(args, ipc, status):
         'min_scale_crops': args.min_scale_crops,
         'max_scale_crops': args.max_scale_crops,
         'crop_interpolation': 'bilinear',
+        'single_quadrant': bool(args.single_quadrant),
+        'quadrant_seed': (args.quadrant_seed if args.single_quadrant else None),
+        'quadrant_schedule': ('balanced stable offsets plus epoch modulo 4'
+                              if args.single_quadrant else None),
         'mix_type': args.mix_type,
         'cutmix_alpha': args.cutmix,
         'use_fp16': bool(args.use_fp16),
@@ -82,6 +87,10 @@ parser.add_argument('--model-weight', nargs='+',
                     help='A list containing the choices of the compare model')
 parser.add_argument('--eval-mode', type=str,default="F",
                     help='whether to use the evaluation mode or not')
+parser.add_argument('--single-quadrant', action='store_true',
+                    help='select one balanced factor-2 mosaic quadrant before RRC')
+parser.add_argument('--quadrant-seed', type=int, default=42,
+                    help='stable namespace seed for balanced quadrant offsets')
 parser.add_argument('--teacher-model-name', type=str,
                     help='teacher model name')
 parser.add_argument('--teacher-num-classes', type=int, default=None,
@@ -357,8 +366,11 @@ def main_worker(gpu, ngpus_per_node, args):
     train_dataset = ImageFolder_FKD_MIX(
         fkd_path=args.fkd_path,
         mode=args.mode,
+        quadrant_mode=args.single_quadrant,
+        quadrant_seed=args.quadrant_seed,
         root=args.syn_data_path,
         transform=ComposeWithCoords(transforms=[
+            SelectQuadrantWithRes(),
             RandomResizedCropWithCoords(size=args.input_size,
                                         scale=(args.min_scale_crops,
                                                args.max_scale_crops),
@@ -397,6 +409,7 @@ def main_worker(gpu, ngpus_per_node, args):
         print("Applying BSSL: Teacher train mode=True")
 
     for epoch in tqdm([i for i in range(args.epochs)]):
+        train_dataset.set_epoch(epoch)
         dir_path = os.path.join(args.fkd_path, 'epoch_{}'.format(epoch))
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
@@ -421,7 +434,12 @@ def save(train_loader, model_lis, dir_path, args):
     compute_seconds = 0.0
     save_seconds = 0.0
     batches = 0
-    for batch_idx, (images, target, flip_status, coords_status) in enumerate(train_loader):
+    for batch_idx, batch_data in enumerate(train_loader):
+        if len(batch_data) == 5:
+            images, target, flip_status, coords_status, quadrant_status = batch_data
+        else:
+            images, target, flip_status, coords_status = batch_data
+            quadrant_status = None
         compute_started = time.time()
         images = images.cuda(non_blocking=True)
         split_point = int(images.shape[0] // 2)
@@ -459,6 +477,8 @@ def save(train_loader, model_lis, dir_path, args):
         compute_seconds += time.time() - compute_started
 
         batch_config = [coords_status, flip_status, mix_index, mix_lam, mix_bbox, output_cpu]
+        if quadrant_status is not None:
+            batch_config.append(quadrant_status)
         batch_config_path = os.path.join(dir_path, 'batch_{}.tar'.format(batch_idx))
         save_started = time.time()
         torch.save(batch_config, batch_config_path)

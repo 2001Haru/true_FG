@@ -53,8 +53,8 @@ def main() -> None:
         for batch_index in sample_batches:
             path = args.fkd_dir / f"epoch_{epoch}" / f"batch_{batch_index}.tar"
             payload = torch.load(path, map_location="cpu", weights_only=False)
-            if not isinstance(payload, (list, tuple)) or len(payload) != 6:
-                fail(f"unexpected payload at {path}: expected six entries")
+            if not isinstance(payload, (list, tuple)) or len(payload) not in (6, 7):
+                fail(f"unexpected payload at {path}: expected six or seven entries")
             soft_labels = payload[5]
             if not isinstance(soft_labels, torch.Tensor) or soft_labels.ndim != 2:
                 fail(f"soft labels at {path} are not a rank-2 tensor")
@@ -70,11 +70,22 @@ def main() -> None:
                 )
             if not torch.isfinite(soft_labels).all():
                 fail(f"non-finite soft labels at {path}")
+            quadrant_summary = None
+            if len(payload) == 7:
+                quadrants = payload[6]
+                if not isinstance(quadrants, torch.Tensor) or tuple(quadrants.shape) != (expected_rows,):
+                    fail(f"quadrants at {path} have invalid shape")
+                if not torch.all((quadrants >= 0) & (quadrants <= 3)):
+                    fail(f"quadrants at {path} are outside 0..3")
+                quadrant_summary = {
+                    str(index): int((quadrants == index).sum()) for index in range(4)
+                }
             samples.append({
                 "epoch": epoch,
                 "batch": batch_index,
                 "shape": list(soft_labels.shape),
                 "dtype": str(soft_labels.dtype),
+                "quadrants": quadrant_summary,
             })
 
     output = args.output or args.fkd_dir / "fkd_audit.json"
@@ -89,6 +100,10 @@ def main() -> None:
         "batch_files": args.epochs * batches_per_epoch,
         "total_bytes": total_bytes,
         "content_samples": samples,
+        "payload_entries": len(torch.load(
+            args.fkd_dir / "epoch_0" / "batch_0.tar",
+            map_location="cpu", weights_only=False,
+        )),
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")

@@ -30,7 +30,8 @@ sys.path.append(parent_dir)
 from models import *
 from relabel.utils_fkd import (ComposeWithCoords, ImageFolder_FKD_MIX,
                                RandomHorizontalFlipWithRes,
-                               RandomResizedCropWithCoords, mix_aug)
+                               RandomResizedCropWithCoords,
+                               SelectQuadrantWithRes, mix_aug)
 
 _original_map_dataset_fetch = _MapDatasetFetcher.fetch
 
@@ -423,6 +424,7 @@ def main():
             args_bs=args.batch_size,
             root=args.original_data_path,
             transform=ComposeWithCoords(transforms=[
+                SelectQuadrantWithRes(),
                 RandomResizedCropWithCoords(size=args.input_size,
                                             scale=(args.min_scale, 1),
                                             interpolation=InterpolationMode.BILINEAR),

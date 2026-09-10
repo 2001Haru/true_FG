@@ -1,5 +1,6 @@
 import os
 import re
+import hashlib
 import numpy as np
 import torch
 import torch.distributed
@@ -38,13 +39,34 @@ class RandomResizedCropWithCoords(torchvision.transforms.RandomResizedCrop):
                                  self.interpolation), coords
 
 
+class SelectQuadrantWithRes(torch.nn.Module):
+    """Select a saved factor-2 mosaic quadrant before later transforms."""
+
+    def __call__(self, img, quadrant):
+        if quadrant is None:
+            return img, None
+        quadrant = int(quadrant.item() if hasattr(quadrant, 'item') else quadrant)
+        if quadrant not in range(4):
+            raise ValueError(f'quadrant index must be 0..3, got {quadrant}')
+        width, height = img.size
+        if width % 2 or height % 2:
+            raise ValueError(f'single-quadrant replay requires even image size, got {img.size}')
+        half_width, half_height = width // 2, height // 2
+        row, column = divmod(quadrant, 2)
+        return t_F.crop(
+            img, row * half_height, column * half_width, half_height, half_width
+        ), quadrant
+
+
 class ComposeWithCoords(torchvision.transforms.Compose):
     def __init__(self, **kwargs):
         super(ComposeWithCoords, self).__init__(**kwargs)
 
-    def __call__(self, img, coords, status):
+    def __call__(self, img, coords, status, quadrant=None):
         for t in self.transforms:
-            if type(t).__name__ == 'RandomResizedCropWithCoords':
+            if type(t).__name__ == 'SelectQuadrantWithRes':
+                img, quadrant = t(img, quadrant)
+            elif type(t).__name__ == 'RandomResizedCropWithCoords':
                 img, coords = t(img, coords)
             elif type(t).__name__ == 'RandomCropWithCoords':
                 img, coords = t(img, coords)
@@ -52,7 +74,7 @@ class ComposeWithCoords(torchvision.transforms.Compose):
                 img, status = t(img, status)
             else:
                 img = t(img)
-        return img, status, coords
+        return img, status, coords, quadrant
 
 
 class RandomHorizontalFlipWithRes(torch.nn.Module):
@@ -128,10 +150,24 @@ def get_FKD_info(fkd_path):
 
 
 class ImageFolder_FKD_MIX(torchvision.datasets.ImageFolder):
-    def __init__(self, fkd_path, mode, args_epoch=None, args_bs=None, **kwargs):
+    def __init__(self, fkd_path, mode, args_epoch=None, args_bs=None,
+                 quadrant_mode=False, quadrant_seed=42, **kwargs):
         self.fkd_path = fkd_path
         self.mode = mode
         super(ImageFolder_FKD_MIX, self).__init__(**kwargs)
+        self.quadrant_mode = bool(quadrant_mode)
+        self.quadrant_seed = int(quadrant_seed)
+        self.quadrant_offsets = None
+        if self.quadrant_mode:
+            ranked_indices = sorted(
+                range(len(self.samples)),
+                key=lambda index: hashlib.sha256(
+                    f"fkd-quadrant-v1\0{self.quadrant_seed}\0{self.samples[index][0]}".encode('utf-8')
+                ).digest(),
+            )
+            self.quadrant_offsets = [0] * len(self.samples)
+            for rank, index in enumerate(ranked_indices):
+                self.quadrant_offsets[index] = rank % 4
         self.batch_config = None  # [list(coords), list(flip_status)]
         self.batch_config_idx = 0  # index of processing image in this batch
         if self.mode == 'fkd_load':
@@ -147,6 +183,9 @@ class ImageFolder_FKD_MIX(torchvision.datasets.ImageFolder):
             # the selected FKD epoch in shared memory so workers do not remain
             # stuck on the epoch that was active when they were created.
             self._shared_epoch = torch.tensor([-1], dtype=torch.int64).share_memory_()
+        elif self.mode == 'fkd_save' and self.quadrant_mode:
+            self.epoch = None
+            self._shared_epoch = torch.tensor([-1], dtype=torch.int64).share_memory_()
 
     def __getitem__(self, index):
         path, target = self.samples[index]
@@ -154,6 +193,13 @@ class ImageFolder_FKD_MIX(torchvision.datasets.ImageFolder):
         if self.mode == 'fkd_save':
             coords_ = None
             flip_ = None
+            if self.quadrant_mode:
+                epoch = int(self._shared_epoch.item())
+                if epoch < 0:
+                    raise RuntimeError('FKD epoch is not set before quadrant selection')
+                quadrant_ = (self.quadrant_offsets[index] + epoch) % 4
+            else:
+                quadrant_ = None
         elif self.mode == 'fkd_load':
             if self.batch_config == None:
                 raise ValueError('config is not loaded')
@@ -161,6 +207,9 @@ class ImageFolder_FKD_MIX(torchvision.datasets.ImageFolder):
 
             coords_ = self.batch_config[0][self.batch_config_idx]
             flip_ = self.batch_config[1][self.batch_config_idx]
+            quadrant_config = self.batch_config[2]
+            quadrant_ = (None if quadrant_config is None else
+                           quadrant_config[self.batch_config_idx])
 
             self.batch_config_idx += 1
         else:
@@ -169,14 +218,20 @@ class ImageFolder_FKD_MIX(torchvision.datasets.ImageFolder):
         sample = self.loader(path)
 
         if self.transform is not None:
-            sample_new, flip_status, coords_status = self.transform(sample, coords_, flip_)
+            sample_new, flip_status, coords_status, quadrant_status = self.transform(
+                sample, coords_, flip_, quadrant_
+            )
         else:
+            sample_new = sample
             flip_status = None
             coords_status = None
+            quadrant_status = quadrant_
 
         if self.target_transform is not None:
             target = self.target_transform(target)
 
+        if self.mode == 'fkd_save' and self.quadrant_mode:
+            return sample_new, target, flip_status, coords_status, quadrant_status
         return sample_new, target, flip_status, coords_status
 
     def load_batch_config(self, img_idx):
@@ -191,11 +246,14 @@ class ImageFolder_FKD_MIX(torchvision.datasets.ImageFolder):
         batch_idx = self.img2batch_idx_list[epoch][img_idx]
         batch_config_path = os.path.join(self.fkd_path, 'epoch_{}'.format(epoch), 'batch_{}.tar'.format(batch_idx))
 
-        # [coords, flip_status, mix_index, mix_lam, mix_bbox, soft_label]
+        # Legacy: [coords, flip, mix_index, mix_lam, mix_bbox, soft_label]
+        # Quadrant format appends per-image quadrant indices as entry seven.
         config = torch.load(batch_config_path,weights_only=False)
+        if len(config) not in (6, 7):
+            raise RuntimeError(f'unexpected FKD batch payload length: {len(config)}')
         self.batch_config_idx = 0
-        self.batch_config = config[:2]
-        return config[2:]
+        self.batch_config = [config[0], config[1], config[6] if len(config) == 7 else None]
+        return config[2:6]
 
     def set_epoch(self, epoch):
         self.epoch = epoch
