@@ -30,7 +30,8 @@ def main():
                    "soft_best": soft["best_top1"], "soft_final": soft["final_epoch_top1"],
                    "hard_minus_soft_best": hard["best_top1"] - soft["best_top1"],
                    "hard_minus_soft_final": hard["final_epoch_top1"] - soft["final_epoch_top1"],
-                   "best_epoch": hard["best_epoch"], "result": str(path.resolve())}
+                   "best_epoch": hard["best_epoch"], "initial_model_sha256": hard["initial_model_sha256"],
+                   "result": str(path.resolve())}
             rows.append(row)
         except Exception as error:
             errors.append({"path": str(path), "error": str(error)})
@@ -47,10 +48,17 @@ def main():
                        "hard_minus_soft_best": stats(row["hard_minus_soft_best"] for row in selected),
                        "hard_minus_soft_final": stats(row["hard_minus_soft_final"] for row in selected),
                        "best_epochs": [row["best_epoch"] for row in selected]})
+    hash_audit = {}
+    for seed in (42, 43, 44):
+        hashes = sorted({row["initial_model_sha256"] for row in rows if row["student_seed"] == seed})
+        hash_audit[str(seed)] = {"unique_hashes": len(hashes), "hashes": hashes}
+        if rows and len(hashes) != 1:
+            errors.append({"student_seed": seed, "error": f"initial model hashes differ: {hashes}"})
     payload = {"status": "complete" if len(rows) == expected and not errors else "failed",
                "dataset": "A_imsize224", "expected_unique_results": expected,
                "logical_results_including_reused_h20_A": 81,
                "protocol": "standard_v2 with only FKD soft logits replaced by hard CutMix CE",
+               "initial_model_hash_audit": hash_audit,
                "groups": groups, "rows": rows, "errors": errors}
     output = args.root / "summary/aircraft_hard_replay_v2.json"
     output.parent.mkdir(parents=True, exist_ok=True)

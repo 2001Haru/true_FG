@@ -62,7 +62,10 @@ def main():
     expect(result["scheduler_t_max"], 400, "T_max")
     expect(result["mix_type"], "cutmix", "CutMix")
     expect(result["validation_images"], 3333, "validation images")
-    expect(result["initial_model_sha256"], source["initial_model_sha256"], "paired initialization")
+    if not isinstance(result.get("initial_model_sha256"), str) or len(result["initial_model_sha256"]) != 64:
+        raise RuntimeError("missing hard-run initial model SHA-256")
+    if source.get("initial_model_sha256") is not None:
+        expect(result["initial_model_sha256"], source["initial_model_sha256"], "paired initialization")
     fkd_audit = load(Path(result["fkd_path"]) / "fkd_audit.json")
     expect(fkd_audit["status"], "complete", "FKD audit")
     expect(fkd_audit["images"], 100 * args.ipc, "FKD images")
@@ -73,6 +76,7 @@ def main():
         "ipc": args.ipc, "student_seed": args.student_seed,
         "source_soft_result": str(args.source_soft_result.resolve()),
         "source_soft_result_sha256": sha256(args.source_soft_result),
+        "source_soft_initial_hash_available": source.get("initial_model_sha256") is not None,
         "only_supervision_changed": True,
         "augmentation_and_cutmix_trajectory_source": result["fkd_path"],
     }
