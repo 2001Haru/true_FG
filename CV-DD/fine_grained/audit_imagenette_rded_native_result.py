@@ -21,7 +21,7 @@ def main():
     parser.add_argument("--result", required=True, type=Path)
     parser.add_argument("--ipc", required=True, choices=(10, 50), type=int)
     parser.add_argument("--seed", required=True, type=int)
-    parser.add_argument("--arm", required=True, choices=("a_original", "d_rded"))
+    parser.add_argument("--arm", required=True, choices=("a_original", "d_rded", "random_real"))
     args = parser.parse_args()
     payload = json.loads(args.result.read_text(encoding="utf-8"))
     expect(payload["status"], "complete", "status")

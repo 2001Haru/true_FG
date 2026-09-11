@@ -146,7 +146,7 @@ def main():
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--ipc", required=True, choices=(10, 50), type=int)
     parser.add_argument("--student-seed", required=True, type=int)
-    parser.add_argument("--image-arm", required=True, choices=("a_original", "d_rded"))
+    parser.add_argument("--image-arm", required=True, choices=("a_original", "d_rded", "random_real"))
     parser.add_argument("--workers", default=4, type=int)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
