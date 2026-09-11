@@ -41,7 +41,7 @@ PY
 }
 
 generate(){
-  CUDA_VISIBLE_DEVICES="${GPUS[0]}" OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  CUDA_VISIBLE_DEVICES="${GPUS[0]}" PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
     python -u "$ROOT_DIR/RDED/synthesize/imagenette_original.py" \
       --data-root "$DATA_ROOT" --teacher "$TEACHER" --output-root "$GEN_ROOT" \
       --generation-seed 42 --forward-batch-size 300 --skip-completed > "$LOG_ROOT/generation.log" 2>&1
@@ -92,7 +92,7 @@ native_one(){
   log="$LOG_ROOT/native_${arm}_ipc${ipc}_sseed${seed}.log"; mkdir -p "$(dirname "$result")"
   exec 7>"${result}.lock"; flock -n 7 || return 75
   if [[ ! -f "$result" ]]; then
-    CUDA_VISIBLE_DEVICES="$gpu" OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+    CUDA_VISIBLE_DEVICES="$gpu" PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
       python -u "$ROOT_DIR/RDED/validation/train_imagenette_native_full.py" --train-dir "$images" \
         --val-dir "$DATA_ROOT/test" --teacher "$TEACHER" --output-dir "$(dirname "$result")" \
         --ipc "$ipc" --student-seed "$seed" --image-arm "$arm" --workers 4 > "$log" 2>&1
