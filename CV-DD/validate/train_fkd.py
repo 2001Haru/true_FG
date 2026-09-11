@@ -94,6 +94,8 @@ def get_args():
                         help='path to the fkd labels')
     parser.add_argument('--hard-label', action='store_true',
                         help='train directly from ImageFolder class IDs with cross-entropy; do not load FKD labels')
+    parser.add_argument('--fkd-hard-label', action='store_true',
+                        help='replay FKD crop/flip/CutMix metadata but replace Teacher logits with hard CutMix CE targets')
     parser.add_argument('--output-dir', required='True', type=str,
                         help='output directory')
     parser.add_argument('--dataset-name',default='cifar100',type=str,
@@ -171,10 +173,14 @@ def get_args():
 
     args = parser.parse_args()
 
+    if args.hard_label and args.fkd_hard_label:
+        parser.error('--hard-label and --fkd-hard-label are mutually exclusive')
     if not args.hard_label and args.fkd_path is None:
         parser.error('--fkd-path is required unless --hard-label is specified')
     if args.hard_label and args.mix_type is not None:
         parser.error('--hard-label does not use FKD MixUp/CutMix; omit --mix-type')
+    if args.fkd_hard_label and args.mix_type != 'cutmix':
+        parser.error('--fkd-hard-label currently requires --mix-type cutmix')
 
     args.mode = 'fkd_load'
 
@@ -669,7 +675,14 @@ def train(model, args, epoch=None):
 
         images = images.cuda(non_blocking=True)
         target = target.cuda(non_blocking=True)
-        soft_label = soft_label.cuda(non_blocking=True).float()  # convert to float32
+        soft_label = soft_label.cuda(non_blocking=True).float()  # retained for ordinary FKD soft supervision
+        hard_mix_target = None
+        hard_mix_lam = None
+        if args.fkd_hard_label:
+            hard_mix_target = target[mix_index.long().to(target.device)]
+            x1, y1, x2, y2 = [int(value) for value in mix_bbox]
+            replaced_fraction = ((x2 - x1) * (y2 - y1)) / float(images.shape[-2] * images.shape[-1])
+            hard_mix_lam = 1.0 - replaced_fraction
         images, _, _, _ = mix_aug(images, args, mix_index, mix_lam, mix_bbox)
 
         optimizer.zero_grad()
@@ -690,10 +703,16 @@ def train(model, args, epoch=None):
             output = model(partial_images)
             prec1, prec5 = accuracy(output, partial_target, topk=(1, 5))
 
-            output = F.log_softmax(output/args.temperature, dim=1)
-            partial_soft_label = F.softmax(partial_soft_label/args.temperature, dim=1)
-            loss = loss_function_kl(output, partial_soft_label)
-            # loss = loss * args.temperature * args.temperature
+            if args.fkd_hard_label:
+                partial_mix_target = hard_mix_target[accum_id * small_bs: (accum_id + 1) * small_bs]
+                loss_a = F.cross_entropy(output, partial_target, reduction='none')
+                loss_b = F.cross_entropy(output, partial_mix_target, reduction='none')
+                loss = (hard_mix_lam * loss_a + (1.0 - hard_mix_lam) * loss_b).mean()
+            else:
+                output = F.log_softmax(output/args.temperature, dim=1)
+                partial_soft_label = F.softmax(partial_soft_label/args.temperature, dim=1)
+                loss = loss_function_kl(output, partial_soft_label)
+                # loss = loss * args.temperature * args.temperature
             loss = loss / args.gradient_accumulation_steps
             loss.backward()
 
@@ -824,7 +843,12 @@ def export_per_class_accuracy(model, args, best_acc1):
         'best_epoch': args.best_epoch,
         'final_epoch_top1': args.last_validation_top1,
         'final_epoch': args.epochs - 1,
-        'training_target': ('hard_coarse_label' if args.hard_label else 'fkd_soft_label'),
+        'training_target': ('hard_coarse_label' if args.hard_label else
+                            'fkd_replay_hard_cutmix_ce' if args.fkd_hard_label else
+                            'fkd_soft_label'),
+        'fkd_hard_label': args.fkd_hard_label,
+        'hard_label_student_temperature': 1.0 if args.fkd_hard_label else None,
+        'hard_cutmix_lambda_source': ('actual_bbox_area' if args.fkd_hard_label else None),
         'student_initialization': args.student_initialization,
         'student_seed': args.train_seed,
         'initial_model_sha256': args.initial_model_sha256,
