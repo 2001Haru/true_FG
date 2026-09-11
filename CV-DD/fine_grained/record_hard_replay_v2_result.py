@@ -42,7 +42,7 @@ def main():
     parser.add_argument("--student-seed", required=True, type=int)
     args = parser.parse_args()
     result, source = load(args.result), load(args.source_soft_result)
-    audit_payload(result, 100, 3333)
+    audit_payload(result, 100, 3333, expected_training_target="fkd_replay_hard_cutmix_ce")
     expect(result["student_protocol_name"], "standard_protocol_v2_hard_replay", "protocol")
     expect(result["student_initialization"], "imagenet-v1", "initialization")
     expect(result["student_seed"], args.student_seed, "Student seed")
