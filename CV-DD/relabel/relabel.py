@@ -17,6 +17,7 @@ import torchvision.transforms as transforms
 from torchvision.transforms import InterpolationMode
 from tqdm import tqdm
 from utils_fkd import (ComposeWithCoords, ImageFolder_FKD_MIX,
+                       FullImageResizeWithCoords,
                        RandomHorizontalFlipWithRes,
                        RandomResizedCropWithCoords, SelectQuadrantWithRes,
                        mix_aug, load_model,count_jpg_files)
@@ -62,6 +63,9 @@ def write_relabel_manifest(args, ipc, status):
         'min_scale_crops': args.min_scale_crops,
         'max_scale_crops': args.max_scale_crops,
         'crop_interpolation': 'bilinear',
+        'full_image_resize': bool(args.full_image_resize),
+        'train_view': ('Resize224(full frame) + HorizontalFlip'
+                       if args.full_image_resize else 'RandomResizedCrop224 + HorizontalFlip'),
         'single_quadrant': bool(args.single_quadrant),
         'quadrant_seed': (args.quadrant_seed if args.single_quadrant else None),
         'quadrant_schedule': ('balanced stable offsets plus epoch modulo 4'
@@ -91,6 +95,8 @@ parser.add_argument('--eval-mode', type=str,default="F",
                     help='whether to use the evaluation mode or not')
 parser.add_argument('--single-quadrant', action='store_true',
                     help='select one balanced factor-2 mosaic quadrant before RRC')
+parser.add_argument('--full-image-resize', action='store_true',
+                    help='preserve the complete image: deterministic resize to input size, then flip')
 parser.add_argument('--quadrant-seed', type=int, default=42,
                     help='stable namespace seed for balanced quadrant offsets')
 parser.add_argument('--teacher-model-name', type=str,
@@ -365,6 +371,17 @@ def main_worker(gpu, ngpus_per_node, args):
     normalize = transforms.Normalize(mean=args.mean_norm,
                                      std=args.std_norm)
     
+    if args.single_quadrant and args.full_image_resize:
+        raise ValueError('--single-quadrant and --full-image-resize cannot be combined')
+    spatial_transform = (
+        FullImageResizeWithCoords(size=args.input_size,
+                                  interpolation=InterpolationMode.BILINEAR)
+        if args.full_image_resize else
+        RandomResizedCropWithCoords(size=args.input_size,
+                                    scale=(args.min_scale_crops,
+                                           args.max_scale_crops),
+                                    interpolation=InterpolationMode.BILINEAR)
+    )
     train_dataset = ImageFolder_FKD_MIX(
         fkd_path=args.fkd_path,
         mode=args.mode,
@@ -373,10 +390,7 @@ def main_worker(gpu, ngpus_per_node, args):
         root=args.syn_data_path,
         transform=ComposeWithCoords(transforms=[
             SelectQuadrantWithRes(),
-            RandomResizedCropWithCoords(size=args.input_size,
-                                        scale=(args.min_scale_crops,
-                                               args.max_scale_crops),
-                                        interpolation=InterpolationMode.BILINEAR),
+            spatial_transform,
             RandomHorizontalFlipWithRes(),
             transforms.ToTensor(),
             normalize,

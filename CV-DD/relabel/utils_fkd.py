@@ -39,6 +39,24 @@ class RandomResizedCropWithCoords(torchvision.transforms.RandomResizedCrop):
                                  self.interpolation), coords
 
 
+class FullImageResizeWithCoords(torch.nn.Module):
+    """Resize the complete image and record normalized full-frame coordinates."""
+
+    def __init__(self, size, interpolation=torchvision.transforms.InterpolationMode.BILINEAR):
+        super().__init__()
+        self.size = [size, size] if isinstance(size, int) else list(size)
+        self.interpolation = interpolation
+
+    def __call__(self, img, coords):
+        if coords is None or not bool(torch.as_tensor(coords).any()):
+            coords = torch.tensor([0.0, 0.0, 1.0, 1.0], dtype=torch.float32)
+        else:
+            expected = torch.tensor([0.0, 0.0, 1.0, 1.0], dtype=torch.float32)
+            if not torch.allclose(torch.as_tensor(coords).float(), expected, rtol=0, atol=1e-7):
+                raise RuntimeError(f'full-image replay received non-full coordinates: {coords}')
+        return t_F.resize(img, self.size, interpolation=self.interpolation), coords
+
+
 class SelectQuadrantWithRes(torch.nn.Module):
     """Select a saved factor-2 mosaic quadrant before later transforms."""
 
@@ -67,6 +85,8 @@ class ComposeWithCoords(torchvision.transforms.Compose):
             if type(t).__name__ == 'SelectQuadrantWithRes':
                 img, quadrant = t(img, quadrant)
             elif type(t).__name__ == 'RandomResizedCropWithCoords':
+                img, coords = t(img, coords)
+            elif type(t).__name__ == 'FullImageResizeWithCoords':
                 img, coords = t(img, coords)
             elif type(t).__name__ == 'RandomCropWithCoords':
                 img, coords = t(img, coords)

@@ -42,6 +42,8 @@ def main():
     parser.add_argument("--student-seed", required=True, type=int)
     parser.add_argument("--classes", default=100, type=int)
     parser.add_argument("--validation-images", default=3333, type=int)
+    parser.add_argument("--expected-mix-type", default="cutmix", choices=("cutmix", "none"))
+    parser.add_argument("--require-full-image-resize", action="store_true")
     args = parser.parse_args()
     result, source = load(args.result), load(args.source_soft_result)
     audit_payload(result, args.classes, args.validation_images,
@@ -52,7 +54,10 @@ def main():
     expect(result["training_target"], "fkd_replay_hard_cutmix_ce", "training target")
     expect(result["fkd_hard_label"], True, "hard replay flag")
     close(result["hard_label_student_temperature"], 1.0, "hard temperature")
-    expect(result["hard_cutmix_lambda_source"], "actual_bbox_area", "CutMix lambda")
+    expected_mix = None if args.expected_mix_type == "none" else "cutmix"
+    expect(result["mix_type"], expected_mix, "mix type")
+    expect(result["hard_cutmix_lambda_source"],
+           "actual_bbox_area" if expected_mix == "cutmix" else None, "CutMix lambda")
     expect(result["synthetic_data_path"], source["synthetic_data_path"], "image root")
     expect(result["fkd_path"], source["fkd_path"], "FKD trajectory")
     expect(result["batch_size"], 20, "batch")
@@ -73,6 +78,10 @@ def main():
     expect(fkd_audit["status"], "complete", "FKD audit")
     expect(fkd_audit["images"], args.classes * args.ipc, "FKD images")
     expect(fkd_audit["epochs"], 400, "FKD epochs")
+    relabel = load(Path(result["fkd_path"]) / "relabel_manifest.json")
+    expect(relabel["mix_type"], expected_mix, "Relabel mix type")
+    if args.require_full_image_resize:
+        expect(relabel.get("full_image_resize"), True, "full-image resize")
     result["hard_replay_v2"] = {
         "status": "complete", "method": args.method,
         "source_seed": None if args.source_seed == "none" else int(args.source_seed),

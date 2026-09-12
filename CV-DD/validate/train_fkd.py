@@ -179,8 +179,8 @@ def get_args():
         parser.error('--fkd-path is required unless --hard-label is specified')
     if args.hard_label and args.mix_type is not None:
         parser.error('--hard-label does not use FKD MixUp/CutMix; omit --mix-type')
-    if args.fkd_hard_label and args.mix_type != 'cutmix':
-        parser.error('--fkd-hard-label currently requires --mix-type cutmix')
+    if args.fkd_hard_label and args.mix_type not in ('cutmix', None):
+        parser.error('--fkd-hard-label supports CutMix replay or no mixing')
 
     args.mode = 'fkd_load'
 
@@ -679,10 +679,13 @@ def train(model, args, epoch=None):
         hard_mix_target = None
         hard_mix_lam = None
         if args.fkd_hard_label:
-            hard_mix_target = target[mix_index.long().to(target.device)]
-            x1, y1, x2, y2 = [int(value) for value in mix_bbox]
-            replaced_fraction = ((x2 - x1) * (y2 - y1)) / float(images.shape[-2] * images.shape[-1])
-            hard_mix_lam = 1.0 - replaced_fraction
+            if args.mix_type == 'cutmix':
+                hard_mix_target = target[mix_index.long().to(target.device)]
+                x1, y1, x2, y2 = [int(value) for value in mix_bbox]
+                replaced_fraction = ((x2 - x1) * (y2 - y1)) / float(images.shape[-2] * images.shape[-1])
+                hard_mix_lam = 1.0 - replaced_fraction
+            else:
+                hard_mix_lam = 1.0
         images, _, _, _ = mix_aug(images, args, mix_index, mix_lam, mix_bbox)
 
         optimizer.zero_grad()
@@ -704,10 +707,13 @@ def train(model, args, epoch=None):
             prec1, prec5 = accuracy(output, partial_target, topk=(1, 5))
 
             if args.fkd_hard_label:
-                partial_mix_target = hard_mix_target[accum_id * small_bs: (accum_id + 1) * small_bs]
-                loss_a = F.cross_entropy(output, partial_target, reduction='none')
-                loss_b = F.cross_entropy(output, partial_mix_target, reduction='none')
-                loss = (hard_mix_lam * loss_a + (1.0 - hard_mix_lam) * loss_b).mean()
+                if args.mix_type == 'cutmix':
+                    partial_mix_target = hard_mix_target[accum_id * small_bs: (accum_id + 1) * small_bs]
+                    loss_a = F.cross_entropy(output, partial_target, reduction='none')
+                    loss_b = F.cross_entropy(output, partial_mix_target, reduction='none')
+                    loss = (hard_mix_lam * loss_a + (1.0 - hard_mix_lam) * loss_b).mean()
+                else:
+                    loss = F.cross_entropy(output, partial_target)
             else:
                 output = F.log_softmax(output/args.temperature, dim=1)
                 partial_soft_label = F.softmax(partial_soft_label/args.temperature, dim=1)
@@ -848,7 +854,7 @@ def export_per_class_accuracy(model, args, best_acc1):
                             'fkd_soft_label'),
         'fkd_hard_label': args.fkd_hard_label,
         'hard_label_student_temperature': 1.0 if args.fkd_hard_label else None,
-        'hard_cutmix_lambda_source': ('actual_bbox_area' if args.fkd_hard_label else None),
+        'hard_cutmix_lambda_source': ('actual_bbox_area' if args.fkd_hard_label and args.mix_type == 'cutmix' else None),
         'student_initialization': args.student_initialization,
         'student_seed': args.train_seed,
         'initial_model_sha256': args.initial_model_sha256,
