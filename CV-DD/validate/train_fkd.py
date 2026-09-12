@@ -64,7 +64,9 @@ def _cvdd_fkd_map_dataset_fetch(self, possibly_batched_index):
             data = [self.dataset[idx] for idx in possibly_batched_index]
     else:
         data = self.dataset[possibly_batched_index]
-    return self.collate_fn(data), mix_index.cpu(), mix_lam, mix_bbox, soft_label.cpu()
+    return (self.collate_fn(data),
+            None if mix_index is None else mix_index.cpu(),
+            mix_lam, mix_bbox, soft_label.cpu())
 
 
 if not getattr(_MapDatasetFetcher.fetch, "_cvdd_fkd_patch", False):
