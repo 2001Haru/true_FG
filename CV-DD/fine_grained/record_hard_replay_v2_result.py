@@ -40,9 +40,12 @@ def main():
     parser.add_argument("--source-seed", default="none")
     parser.add_argument("--ipc", required=True, choices=(1, 3, 5), type=int)
     parser.add_argument("--student-seed", required=True, type=int)
+    parser.add_argument("--classes", default=100, type=int)
+    parser.add_argument("--validation-images", default=3333, type=int)
     args = parser.parse_args()
     result, source = load(args.result), load(args.source_soft_result)
-    audit_payload(result, 100, 3333, expected_training_target="fkd_replay_hard_cutmix_ce")
+    audit_payload(result, args.classes, args.validation_images,
+                  expected_training_target="fkd_replay_hard_cutmix_ce")
     expect(result["student_protocol_name"], "standard_protocol_v2_hard_replay", "protocol")
     expect(result["student_initialization"], "imagenet-v1", "initialization")
     expect(result["student_seed"], args.student_seed, "Student seed")
@@ -61,14 +64,14 @@ def main():
     expect(result["scheduler"], "cosine_annealing", "scheduler")
     expect(result["scheduler_t_max"], 400, "T_max")
     expect(result["mix_type"], "cutmix", "CutMix")
-    expect(result["validation_images"], 3333, "validation images")
+    expect(result["validation_images"], args.validation_images, "validation images")
     if not isinstance(result.get("initial_model_sha256"), str) or len(result["initial_model_sha256"]) != 64:
         raise RuntimeError("missing hard-run initial model SHA-256")
     if source.get("initial_model_sha256") is not None:
         expect(result["initial_model_sha256"], source["initial_model_sha256"], "paired initialization")
     fkd_audit = load(Path(result["fkd_path"]) / "fkd_audit.json")
     expect(fkd_audit["status"], "complete", "FKD audit")
-    expect(fkd_audit["images"], 100 * args.ipc, "FKD images")
+    expect(fkd_audit["images"], args.classes * args.ipc, "FKD images")
     expect(fkd_audit["epochs"], 400, "FKD epochs")
     result["hard_replay_v2"] = {
         "status": "complete", "method": args.method,
