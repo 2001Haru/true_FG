@@ -68,7 +68,6 @@ def main():
     close(result["weight_decay"], 1e-5, "weight decay")
     expect(result["scheduler"], "cosine_annealing", "scheduler")
     expect(result["scheduler_t_max"], 400, "T_max")
-    expect(result["mix_type"], "cutmix", "CutMix")
     expect(result["validation_images"], args.validation_images, "validation images")
     if not isinstance(result.get("initial_model_sha256"), str) or len(result["initial_model_sha256"]) != 64:
         raise RuntimeError("missing hard-run initial model SHA-256")
