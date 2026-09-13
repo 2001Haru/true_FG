@@ -20,7 +20,9 @@ def main():
   for metric in ('best','final'):contrasts[f'{left}_minus_{right}_{metric}']=stats(by[left][s][metric]-by[right][s][metric] for s in (42,43,44))
  for s in (42,43,44):
   if len({by[m][s]['initial_hash'] for m in by})!=1:errors.append({'student_seed':s,'error':'initial hash mismatch'})
- try:selection=load(a.root/'selection/selection_manifest.json');pairing={g:load(a.root/f'fkd/{g}/ipc3_bs20_ipc3/pairing_manifest.json') for g in ('r0_confusion_pairing','r0_random_graph_pairing')}
+ try:
+  selection=load(a.root/'selection/selection_manifest.json');pairing={g:load(a.root/f'fkd/{g}/ipc3_bs20_ipc3/pairing_manifest.json') for g in ('r0_confusion_pairing','r0_random_graph_pairing')}
+  assert pairing['r0_confusion_pairing']['guided_receiver_schedule_sha256']==pairing['r0_random_graph_pairing']['guided_receiver_schedule_sha256']
  except Exception as e:selection={};pairing={};errors.append({'manifest':repr(e)})
  result={'status':'complete' if len(rows)==15 and not errors else 'failed','dataset':'A_imsize224','ipc':3,'new_fkd':3,'new_student_runs':9,'groups':groups,'contrasts':contrasts,'selection_summary':{k:selection.get(k) for k in ('candidate_count_per_class','contexts_per_candidate','teacher_forward_images','overlap','score','reference')},'pairing_manifests':pairing,'rows':rows,'errors':errors};out=a.root/'summary/fgdd_v2_aircraft.json';out.parent.mkdir(parents=True,exist_ok=True);tmp=out.with_suffix('.json.tmp');tmp.write_text(json.dumps(result,indent=2,sort_keys=True)+'\n');os.replace(tmp,out);print(json.dumps({'status':result['status'],'rows':len(rows),'errors':errors},indent=2));
  if result['status']!='complete':raise SystemExit(1)
