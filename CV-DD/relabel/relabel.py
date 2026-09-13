@@ -69,6 +69,8 @@ def write_relabel_manifest(args, ipc, status):
         'single_quadrant': bool(args.single_quadrant),
         'quadrant_seed': (args.quadrant_seed if args.single_quadrant else None),
         'quadrant_schedule': ('balanced stable offsets plus epoch modulo 4'
+                              if args.single_quadrant and args.quadrant_schedule == 'cyclic'
+                              else 'stable random permutation per parent and four-epoch block'
                               if args.single_quadrant else None),
         'mix_type': args.mix_type,
         'cutmix_alpha': args.cutmix,
@@ -99,6 +101,8 @@ parser.add_argument('--full-image-resize', action='store_true',
                     help='preserve the complete image: deterministic resize to input size, then flip')
 parser.add_argument('--quadrant-seed', type=int, default=42,
                     help='stable namespace seed for balanced quadrant offsets')
+parser.add_argument('--quadrant-schedule', choices=('cyclic', 'random_permutation'),
+                    default='cyclic', help='balanced per-parent tile schedule across epochs')
 parser.add_argument('--teacher-model-name', type=str,
                     help='teacher model name')
 parser.add_argument('--teacher-num-classes', type=int, default=None,
@@ -371,8 +375,6 @@ def main_worker(gpu, ngpus_per_node, args):
     normalize = transforms.Normalize(mean=args.mean_norm,
                                      std=args.std_norm)
     
-    if args.single_quadrant and args.full_image_resize:
-        raise ValueError('--single-quadrant and --full-image-resize cannot be combined')
     spatial_transform = (
         FullImageResizeWithCoords(size=args.input_size,
                                   interpolation=InterpolationMode.BILINEAR)
@@ -387,6 +389,7 @@ def main_worker(gpu, ngpus_per_node, args):
         mode=args.mode,
         quadrant_mode=args.single_quadrant,
         quadrant_seed=args.quadrant_seed,
+        quadrant_schedule=args.quadrant_schedule,
         root=args.syn_data_path,
         transform=ComposeWithCoords(transforms=[
             SelectQuadrantWithRes(),

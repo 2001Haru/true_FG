@@ -23,6 +23,17 @@ def stable_offsets(paths: list[str], seed: int) -> list[int]:
     return offsets
 
 
+def random_permutation_tile(path: str, seed: int, epoch: int) -> int:
+    block, position = divmod(epoch, 4)
+    permutation = sorted(
+        range(4),
+        key=lambda tile: hashlib.sha256(
+            f"fkd-tile-random-permutation-v1\0{seed}\0{path}\0{block}\0{tile}".encode("utf-8")
+        ).digest(),
+    )
+    return permutation[position]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fkd-dir", required=True, type=Path)
@@ -30,6 +41,7 @@ def main() -> None:
     parser.add_argument("--epochs", default=400, type=int)
     parser.add_argument("--batch-size", default=20, type=int)
     parser.add_argument("--seed", default=42, type=int)
+    parser.add_argument("--schedule", choices=("cyclic", "random_permutation"), default="cyclic")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
@@ -59,11 +71,12 @@ def main() -> None:
         if len(observed) != len(paths):
             raise RuntimeError(f"epoch {epoch}: {len(observed)} quadrant entries")
         counts = Counter(observed)
-        if counts != Counter({0: 75, 1: 75, 2: 75, 3: 75}):
+        if args.schedule == "cyclic" and counts != Counter({0: 75, 1: 75, 2: 75, 3: 75}):
             raise RuntimeError(f"epoch {epoch}: unbalanced quadrants {counts}")
         epoch_counts.append({str(key): counts[key] for key in range(4)})
         for index, quadrant in zip(order, observed):
-            expected = (offsets[index] + epoch) % 4
+            expected = ((offsets[index] + epoch) % 4 if args.schedule == "cyclic"
+                        else random_permutation_tile(paths[index], args.seed, epoch))
             mismatches += int(quadrant != expected)
             per_image[index][quadrant] += 1
     image_balance = [{str(key): counts[key] for key in range(4)} for counts in per_image]
@@ -80,7 +93,9 @@ def main() -> None:
         "batch_size": args.batch_size,
         "quadrant_seed": args.seed,
         "payload_entries": sorted(payload_entries),
-        "schedule": "stable path ranking modulo 4 plus epoch modulo 4",
+        "schedule": ("stable path ranking modulo 4 plus epoch modulo 4"
+                     if args.schedule == "cyclic" else
+                     "stable random permutation per parent path and four-epoch block"),
         "saved_schedule_mismatches": mismatches,
         "per_epoch_quadrant_counts_unique": sorted({tuple(row.values()) for row in epoch_counts}),
         "per_image_quadrant_counts_unique": sorted({tuple(row.values()) for row in image_balance}),

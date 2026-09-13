@@ -171,12 +171,16 @@ def get_FKD_info(fkd_path):
 
 class ImageFolder_FKD_MIX(torchvision.datasets.ImageFolder):
     def __init__(self, fkd_path, mode, args_epoch=None, args_bs=None,
-                 quadrant_mode=False, quadrant_seed=42, **kwargs):
+                 quadrant_mode=False, quadrant_seed=42,
+                 quadrant_schedule='cyclic', **kwargs):
         self.fkd_path = fkd_path
         self.mode = mode
         super(ImageFolder_FKD_MIX, self).__init__(**kwargs)
         self.quadrant_mode = bool(quadrant_mode)
         self.quadrant_seed = int(quadrant_seed)
+        self.quadrant_schedule = str(quadrant_schedule)
+        if self.quadrant_schedule not in ('cyclic', 'random_permutation'):
+            raise ValueError(f'unknown quadrant schedule: {self.quadrant_schedule}')
         self.quadrant_offsets = None
         if self.quadrant_mode:
             ranked_indices = sorted(
@@ -217,7 +221,17 @@ class ImageFolder_FKD_MIX(torchvision.datasets.ImageFolder):
                 epoch = int(self._shared_epoch.item())
                 if epoch < 0:
                     raise RuntimeError('FKD epoch is not set before quadrant selection')
-                quadrant_ = (self.quadrant_offsets[index] + epoch) % 4
+                if self.quadrant_schedule == 'cyclic':
+                    quadrant_ = (self.quadrant_offsets[index] + epoch) % 4
+                else:
+                    block, position = divmod(epoch, 4)
+                    permutation = sorted(
+                        range(4),
+                        key=lambda tile: hashlib.sha256(
+                            f'fkd-tile-random-permutation-v1\0{self.quadrant_seed}\0{path}\0{block}\0{tile}'.encode('utf-8')
+                        ).digest(),
+                    )
+                    quadrant_ = permutation[position]
             else:
                 quadrant_ = None
         elif self.mode == 'fkd_load':
