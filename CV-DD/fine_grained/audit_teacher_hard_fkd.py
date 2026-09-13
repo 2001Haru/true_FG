@@ -57,6 +57,10 @@ def main():
 
     for epoch in range(args.epochs):
         order = torch.randperm(number_images, generator=generator).tolist()
+        # torch.utils.data.RandomSampler consumes one additional randperm even
+        # when num_samples % len(dataset) == 0; its final [:0] is empty but
+        # advances the generator and therefore changes every later epoch.
+        torch.randperm(number_images, generator=generator)[:0]
         for batch_index, offset in enumerate(range(0, number_images, args.batch_size)):
             path = args.fkd / f"epoch_{epoch}" / f"batch_{batch_index}.tar"
             payload = torch.load(path, map_location="cpu", weights_only=False)
@@ -113,7 +117,7 @@ def main():
         "target_histogram_max": max(pseudo_histogram),
         "target_histogram_cv": (float(torch.tensor(pseudo_histogram, dtype=torch.float64).std(unbiased=True) /
                                       torch.tensor(pseudo_histogram, dtype=torch.float64).mean())),
-        "sampler": "torch RandomSampler replay, seed 42, persistent generator across epochs",
+        "sampler": "exact torch RandomSampler replay, including empty remainder randperm; seed 42",
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_suffix(args.output.suffix + ".tmp")
