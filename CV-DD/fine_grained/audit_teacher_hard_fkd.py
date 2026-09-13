@@ -24,6 +24,9 @@ def summarize(values):
 
 
 def main():
+    # Thousands of tiny 20x100 softmax calls are faster and less disruptive
+    # without spawning a full CPU thread team for every saved FKD batch.
+    torch.set_num_threads(1)
     parser = argparse.ArgumentParser()
     parser.add_argument("--images", required=True, type=Path)
     parser.add_argument("--fkd", required=True, type=Path)
