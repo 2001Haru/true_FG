@@ -100,6 +100,8 @@ def get_args():
                         help='replay FKD crop/flip/CutMix metadata but replace Teacher logits with hard CutMix CE targets')
     parser.add_argument('--fkd-teacher-hard-label', action='store_true',
                         help='replay FKD views and train with the cached Teacher-logit argmax using T1 cross-entropy')
+    parser.add_argument('--fkd-target-probabilities', action='store_true',
+                        help='interpret cached FKD targets as probabilities and do not softmax them again')
     parser.add_argument('--output-dir', required='True', type=str,
                         help='output directory')
     parser.add_argument('--dataset-name',default='cifar100',type=str,
@@ -189,6 +191,8 @@ def get_args():
         parser.error('--fkd-hard-label supports CutMix replay or no mixing')
     if args.fkd_teacher_hard_label and args.mix_type is not None:
         parser.error('--fkd-teacher-hard-label currently requires an unmixed FKD view')
+    if args.fkd_target_probabilities and hard_modes:
+        parser.error('--fkd-target-probabilities is only valid for soft KL supervision')
 
     args.mode = 'fkd_load'
 
@@ -684,6 +688,11 @@ def train(model, args, epoch=None):
         images = images.cuda(non_blocking=True)
         target = target.cuda(non_blocking=True)
         soft_label = soft_label.cuda(non_blocking=True).float()  # retained for ordinary FKD soft supervision
+        if args.fkd_target_probabilities and epoch == 0 and batch_idx == 0:
+            if (not torch.isfinite(soft_label).all() or (soft_label < 0).any() or
+                    not torch.allclose(soft_label.sum(dim=1), torch.ones(
+                        soft_label.shape[0], device=soft_label.device), rtol=0, atol=2e-5)):
+                raise RuntimeError('cached FKD probability targets are invalid')
         hard_mix_target = None
         hard_mix_lam = None
         if args.fkd_hard_label:
@@ -727,7 +736,8 @@ def train(model, args, epoch=None):
                     loss = F.cross_entropy(output, partial_target)
             else:
                 output = F.log_softmax(output/args.temperature, dim=1)
-                partial_soft_label = F.softmax(partial_soft_label/args.temperature, dim=1)
+                if not args.fkd_target_probabilities:
+                    partial_soft_label = F.softmax(partial_soft_label/args.temperature, dim=1)
                 loss = loss_function_kl(output, partial_soft_label)
                 # loss = loss * args.temperature * args.temperature
             loss = loss / args.gradient_accumulation_steps
@@ -863,9 +873,11 @@ def export_per_class_accuracy(model, args, best_acc1):
         'training_target': ('hard_coarse_label' if args.hard_label else
                             'fkd_teacher_argmax_ce' if args.fkd_teacher_hard_label else
                             'fkd_replay_hard_cutmix_ce' if args.fkd_hard_label else
+                            'fkd_probability_target' if args.fkd_target_probabilities else
                             'fkd_soft_label'),
         'fkd_hard_label': args.fkd_hard_label,
         'fkd_teacher_hard_label': args.fkd_teacher_hard_label,
+        'fkd_target_probabilities': args.fkd_target_probabilities,
         'hard_label_student_temperature': (1.0 if (args.fkd_hard_label or
                                                     args.fkd_teacher_hard_label) else None),
         'hard_cutmix_lambda_source': ('actual_bbox_area' if args.fkd_hard_label and args.mix_type == 'cutmix' else None),
