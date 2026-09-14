@@ -143,7 +143,8 @@ def main() -> None:
         "teacher_checkpoint": str(args.checkpoint.resolve()),
         "teacher_checkpoint_sha256": sha256_file(args.checkpoint),
         "teacher_mode": "eval",
-        "teacher_forward_split": [10, 10],
+        "teacher_forward_split": [20],
+        "teacher_inference_dtype": "float32",
         "normalization": {"mean": list(IMAGENET_MEAN), "std": list(IMAGENET_STD)},
         "metadata_replay": ["batch order", "RRC coords", "flip", "CutMix index", "CutMix lambda", "CutMix bbox"],
         "epochs": args.epochs,
@@ -172,14 +173,17 @@ def main() -> None:
             mix_index, mix_lam, mix_bbox = batch_data[1:4]
             images = images.cuda(non_blocking=True)
             mixed, _, _, _ = mix_aug(images, mix_args, mix_index, mix_lam, mix_bbox)
-            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                first = inference_logits(model, args.kind, mixed[:10])
-                second = inference_logits(model, args.kind, mixed[10:])
-                logits = torch.cat((first, second), dim=0)
-                if split_full_max_abs is None:
-                    full = inference_logits(model, args.kind, mixed)
-                    split_full_max_abs = float((full.float() - logits.float()).abs().max())
-            values = logits.float()
+            logits = inference_logits(model, args.kind, mixed).float()
+            if split_full_max_abs is None:
+                split_logits = torch.cat(
+                    (
+                        inference_logits(model, args.kind, mixed[:10]),
+                        inference_logits(model, args.kind, mixed[10:]),
+                    ),
+                    dim=0,
+                ).float()
+                split_full_max_abs = float((logits - split_logits).abs().max())
+            values = logits
             for temperature, destination in ((1.0, entropy_t1), (20.0, entropy_t20)):
                 log_probability = F.log_softmax(values / temperature, dim=1)
                 probability = log_probability.exp()

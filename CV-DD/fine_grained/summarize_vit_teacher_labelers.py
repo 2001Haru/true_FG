@@ -32,7 +32,7 @@ def main() -> None:
     payload = {"protocol": "aircraft_R0_v2_labeler_comparison_v1", "teachers": {}, "students": {}}
     for kind in ("vit", "transfg"):
         teacher_manifest = args.root / "teachers" / kind / "training_manifest.json"
-        fkd_manifest = args.root / "fkd" / kind / "ipc3_bs20_ipc3" / "relabel_manifest.json"
+        fkd_manifest = args.root / "fkd" / kind / "ipc3_bs20_ipc3_fp32" / "relabel_manifest.json"
         payload["teachers"][kind] = json.loads(teacher_manifest.read_text(encoding="utf-8"))
         payload["teachers"][kind]["fkd"] = json.loads(fkd_manifest.read_text(encoding="utf-8"))
         paths = [args.root / "results" / kind / f"ipc3_sseed{seed}.json" for seed in (42, 43, 44)]

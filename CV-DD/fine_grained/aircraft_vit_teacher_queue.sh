@@ -92,7 +92,7 @@ rescore_fkd(){
   local pids=() failed=0
   for spec in "vit:0:ViT-pytorch" "transfg:1:TransFG"; do
     IFS=: read -r kind gpu source <<< "$spec"
-    output="$EXP_ROOT/fkd/$kind/ipc3_bs20_ipc3"
+    output="$EXP_ROOT/fkd/$kind/ipc3_bs20_ipc3_fp32"
     CUDA_VISIBLE_DEVICES="$gpu" PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python \
       OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
       python -u "$ROOT_DIR/CV-DD/fine_grained/rescore_fkd_vit_teacher.py" \
@@ -106,7 +106,7 @@ rescore_fkd(){
   for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
   (( failed == 0 ))
   for kind in vit transfg; do
-    output="$EXP_ROOT/fkd/$kind/ipc3_bs20_ipc3"
+    output="$EXP_ROOT/fkd/$kind/ipc3_bs20_ipc3_fp32"
     python "$ROOT_DIR/CV-DD/fine_grained/audit_fkd.py" \
       --fkd-dir "$output" --images 300 --classes 100 --batch-size 20 --epochs 400 \
       --output "$EXP_ROOT/audits/${kind}_fkd_structure.json" >> "$EXP_ROOT/logs/relabel_${kind}.log" 2>&1
@@ -129,7 +129,7 @@ run_students(){
         OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
         python -u "$ROOT_DIR/CV-DD/validate/train_fkd.py" \
         --model ResNet18 --ipc 3 --exp-name "R0_${kind}_teacher_s${seed}" \
-        --original-data-path "$R0_IMAGES" --fkd-path "$EXP_ROOT/fkd/$kind/ipc3_bs20_ipc3" \
+        --original-data-path "$R0_IMAGES" --fkd-path "$EXP_ROOT/fkd/$kind/ipc3_bs20_ipc3_fp32" \
         --output-dir "$EXP_ROOT/post_eval/$kind/sseed${seed}" --batch-size 20 --epochs 400 \
         --dataset-name A_imsize224 --gradient-accumulation-steps 2 --mix-type cutmix \
         --workers 8 --persistent-workers --fkd_seed 42 --train-seed "$seed" --temperature 20 \
