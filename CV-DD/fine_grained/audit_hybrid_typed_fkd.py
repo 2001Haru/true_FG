@@ -24,14 +24,15 @@ def main():
     parser.add_argument("--seed", default=42, type=int)
     args = parser.parse_args()
     generator = torch.Generator().manual_seed(args.seed)
+    index_dataset = torch.utils.data.TensorDataset(torch.arange(args.images))
+    sampler = torch.utils.data.RandomSampler(index_dataset, generator=generator)
+    batch_sampler = torch.utils.data.BatchSampler(sampler, batch_size=args.batch_size, drop_last=False)
     full = torch.tensor([0.0, 0.0, 1.0, 1.0])
     counts = {"views": 0, "full_views": 0, "mosaic_views": 0, "full_not_full": 0,
               "mosaic_coords_changed": 0, "flip_mismatch": 0, "mix_index_mismatch": 0,
               "mix_lambda_mismatch": 0, "mix_bbox_mismatch": 0}
     for epoch in range(args.epochs):
-        order = torch.randperm(args.images, generator=generator).tolist()
-        for batch_index, start in enumerate(range(0, args.images, args.batch_size)):
-            indices = order[start:start + args.batch_size]
+        for batch_index, indices in enumerate(batch_sampler):
             source = torch.load(args.source / f"epoch_{epoch}/batch_{batch_index}.tar", weights_only=False)
             candidate = torch.load(args.candidate / f"epoch_{epoch}/batch_{batch_index}.tar", weights_only=False)
             for position, index in enumerate(indices):

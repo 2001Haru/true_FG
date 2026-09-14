@@ -41,19 +41,29 @@ BASE="$EXP/fkd/hybrid_fg_uniform_rrc/ipc3_bs20_ipc3"
 FG_TYPED="$EXP/fkd/hybrid_fg_typed/ipc3_bs20_ipc3"
 RANDOM_TYPED="$EXP/fkd/hybrid_random_typed/ipc3_bs20_ipc3"
 
-CUDA_VISIBLE_DEVICES=0 python -u "$ROOT/CV-DD/relabel/relabel.py" --syn-data-path "$FG_IMAGES" \
- --fkd-path "$EXP/fkd/hybrid_fg_uniform_rrc/ipc3" --model-pool-dir "$TEACHER_DIR" --teacher-model-name ResNet18 \
- --gpu 0 --batch-size 20 --workers 8 --dataset-name A_imsize224 --epochs 400 --seed 42 --fkd-seed 42 \
- --use-fp16 --mode fkd_save --min-scale-crops .08 --max-scale-crops 1 --mix-type cutmix > "$EXP/logs/relabel_hybrid_fg_uniform_rrc.log" 2>&1
+fkd_complete(){
+ local path=$1 count=0 status=''
+ [[ -d "$path" ]] && count=$(find "$path" -type f -name 'batch_*.tar' | wc -l)
+ [[ -f "$path/relabel_manifest.json" ]] && status=$(python -c "import json;print(json.load(open('$path/relabel_manifest.json')).get('status',''))")
+ [[ "$count" == 6000 && "$status" == complete ]]
+}
+if ! fkd_complete "$BASE"; then
+ CUDA_VISIBLE_DEVICES=0 python -u "$ROOT/CV-DD/relabel/relabel.py" --syn-data-path "$FG_IMAGES" \
+  --fkd-path "$EXP/fkd/hybrid_fg_uniform_rrc/ipc3" --model-pool-dir "$TEACHER_DIR" --teacher-model-name ResNet18 \
+  --gpu 0 --batch-size 20 --workers 8 --dataset-name A_imsize224 --epochs 400 --seed 42 --fkd-seed 42 \
+  --use-fp16 --mode fkd_save --min-scale-crops .08 --max-scale-crops 1 --mix-type cutmix > "$EXP/logs/relabel_hybrid_fg_uniform_rrc.log" 2>&1
+fi
 python "$ROOT/CV-DD/fine_grained/audit_fkd.py" --fkd-dir "$BASE" --images 300 --classes 100 --batch-size 20 \
  --epochs 400 --output "$EXP/audits/hybrid_fg_uniform_rrc_fkd.json" >> "$EXP/logs/relabel_hybrid_fg_uniform_rrc.log" 2>&1
 
 rescore_typed(){
  local method=$1 image_root=$2 output=$3 gpu=$4
- CUDA_VISIBLE_DEVICES=$gpu python -u "$ROOT/CV-DD/fine_grained/rescore_fkd_views.py" --image-root "$image_root" \
-  --source-fkd "$BASE" --output-fkd "$output" --teacher "$TEACHER" --ipc 3 --classes 100 --dataset-name A_imsize224 \
-  --epochs 400 --batch-size 20 --workers 8 --seed 42 --fkd-seed 42 --mean .4865 .5177 .5425 --std .2124 .2051 .2375 \
-  --force-full-prefix slot0_full > "$EXP/logs/relabel_${method}.log" 2>&1
+ if ! fkd_complete "$output"; then
+  CUDA_VISIBLE_DEVICES=$gpu python -u "$ROOT/CV-DD/fine_grained/rescore_fkd_views.py" --image-root "$image_root" \
+   --source-fkd "$BASE" --output-fkd "$output" --teacher "$TEACHER" --ipc 3 --classes 100 --dataset-name A_imsize224 \
+   --epochs 400 --batch-size 20 --workers 8 --seed 42 --fkd-seed 42 --mean .4865 .5177 .5425 --std .2124 .2051 .2375 \
+   --force-full-prefix slot0_full > "$EXP/logs/relabel_${method}.log" 2>&1
+ fi
  python "$ROOT/CV-DD/fine_grained/audit_fkd.py" --fkd-dir "$output" --images 300 --classes 100 --batch-size 20 \
   --epochs 400 --output "$EXP/audits/${method}_fkd.json" >> "$EXP/logs/relabel_${method}.log" 2>&1
  python "$ROOT/CV-DD/fine_grained/audit_hybrid_typed_fkd.py" --source "$BASE" --candidate "$output" \
@@ -72,14 +82,14 @@ fkd(){ case "$1" in hybrid_fg_uniform_rrc) echo "$BASE";; hybrid_fg_typed) echo 
 student(){
  local method=$1 seed=$2 gpu=$3 result
  result="$EXP/results/$method/ipc3_sseed$seed.json"; mkdir -p "$(dirname "$result")" "$EXP/post_eval/$method/sseed$seed"
- CUDA_VISIBLE_DEVICES=$gpu python -u "$ROOT/CV-DD/validate/train_fkd.py" --model ResNet18 --ipc 3 \
+ if [[ ! -f "$result" ]]; then CUDA_VISIBLE_DEVICES=$gpu python -u "$ROOT/CV-DD/validate/train_fkd.py" --model ResNet18 --ipc 3 \
   --exp-name "deco_hybrid_${method}_s${seed}" --original-data-path "$(images "$method")" --fkd-path "$(fkd "$method")" \
   --output-dir "$EXP/post_eval/$method/sseed$seed" --batch-size 20 --epochs 400 --dataset-name A_imsize224 \
   --gradient-accumulation-steps 2 --mix-type cutmix --workers 8 --persistent-workers --fkd_seed 42 --train-seed "$seed" \
   --temperature 20 --student-initialization imagenet-v1 --student-protocol-name "standard_v2_deco_hybrid_$method" \
   --adamw-weight-decay 1e-5 --adamw-beta1 .9 --adamw-beta2 .999 --adamw-eps 1e-8 \
   --adamw-backbone-lr 1e-4 --adamw-head-lr 1e-3 --cosine-t-max 400 --cosine-eta-min 0 \
-  --val-dir "$TEST" --disable-wandb --per-class-output "$result" > "$EXP/logs/eval_${method}_s${seed}.log" 2>&1
+  --val-dir "$TEST" --disable-wandb --per-class-output "$result" > "$EXP/logs/eval_${method}_s${seed}.log" 2>&1; fi
 }
 pids=();index=0
 for method in hybrid_fg_uniform_rrc hybrid_fg_typed hybrid_random_typed; do for seed in 42 43 44; do
