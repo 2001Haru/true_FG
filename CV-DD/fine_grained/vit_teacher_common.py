@@ -91,11 +91,24 @@ def import_upstream(source_root: Path):
     for name in list(sys.modules):
         if name == "models" or name.startswith("models."):
             del sys.modules[name]
-    sys.path.insert(0, str(source_root.resolve()))
+    original_path = list(sys.path)
+    isolated_path = [str(source_root.resolve())]
+    for entry in original_path:
+        candidate = Path(entry or ".").resolve()
+        # Both pinned upstreams intentionally have a namespace-style ``models``
+        # directory (no __init__.py).  Any later regular package with that name
+        # would otherwise win namespace resolution, even though source_root is
+        # first on sys.path.
+        if (candidate / "models" / "__init__.py").is_file():
+            continue
+        if str(candidate) != str(source_root.resolve()):
+            isolated_path.append(entry)
+    sys.path[:] = isolated_path
+    importlib.invalidate_caches()
     try:
         module = importlib.import_module("models.modeling")
     finally:
-        sys.path.pop(0)
+        sys.path[:] = original_path
     module_path = Path(module.__file__).resolve()
     if source_root.resolve() not in module_path.parents:
         raise RuntimeError(f"wrong models.modeling imported: {module_path}")
