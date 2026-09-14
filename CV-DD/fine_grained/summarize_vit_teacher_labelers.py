@@ -2,10 +2,16 @@
 
 import argparse
 import json
+import os
 import statistics
 from pathlib import Path
 
-from vit_teacher_common import atomic_json
+
+def atomic_json(payload: dict, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
 
 
 def aggregate(paths: list[Path]) -> dict:
