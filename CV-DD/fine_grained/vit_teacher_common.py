@@ -83,11 +83,22 @@ def import_upstream(source_root: Path):
         module.ConfigDict = ConfigDict
         module.__version__ = "repository_fallback_v1"
         sys.modules["ml_collections"] = module
+    # CV-DD itself may already have imported a top-level package named
+    # ``models`` before this helper is called (notably in FKD replay).  The two
+    # pinned upstreams also use that generic package name.  A fresh process is
+    # used for each teacher kind, so evict only this ambiguous package namespace
+    # before importing the explicitly selected vendored implementation.
+    for name in list(sys.modules):
+        if name == "models" or name.startswith("models."):
+            del sys.modules[name]
     sys.path.insert(0, str(source_root.resolve()))
     try:
         module = importlib.import_module("models.modeling")
     finally:
         sys.path.pop(0)
+    module_path = Path(module.__file__).resolve()
+    if source_root.resolve() not in module_path.parents:
+        raise RuntimeError(f"wrong models.modeling imported: {module_path}")
     return module
 
 
