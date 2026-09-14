@@ -56,4 +56,5 @@ for arm in ('entropy_match','rrc_only'):
  out[arm]['rows']=[{k:x[k] for k in ('student_seed','best_top1','final_epoch_top1','teacher_temperature')} for x in rows]
 (r/'summary.json').write_text(json.dumps(out,indent=2)+'\n')
 PY
+python "$ROOT/CV-DD/fine_grained/summarize_transfg_scale_rrc.py" --root "$EXP"
 date --iso-8601=seconds > "$EXP/status/complete"
