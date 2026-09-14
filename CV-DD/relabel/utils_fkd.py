@@ -172,13 +172,14 @@ def get_FKD_info(fkd_path):
 class ImageFolder_FKD_MIX(torchvision.datasets.ImageFolder):
     def __init__(self, fkd_path, mode, args_epoch=None, args_bs=None,
                  quadrant_mode=False, quadrant_seed=42,
-                 quadrant_schedule='cyclic', **kwargs):
+                 quadrant_schedule='cyclic', force_full_prefix=None, **kwargs):
         self.fkd_path = fkd_path
         self.mode = mode
         super(ImageFolder_FKD_MIX, self).__init__(**kwargs)
         self.quadrant_mode = bool(quadrant_mode)
         self.quadrant_seed = int(quadrant_seed)
         self.quadrant_schedule = str(quadrant_schedule)
+        self.force_full_prefix = force_full_prefix
         if self.quadrant_schedule not in ('cyclic', 'random_permutation'):
             raise ValueError(f'unknown quadrant schedule: {self.quadrant_schedule}')
         self.quadrant_offsets = None
@@ -248,6 +249,9 @@ class ImageFolder_FKD_MIX(torchvision.datasets.ImageFolder):
             self.batch_config_idx += 1
         else:
             raise ValueError('mode should be fkd_save or fkd_load')
+
+        if self.force_full_prefix and os.path.basename(path).startswith(self.force_full_prefix):
+            coords_ = torch.tensor([0.0, 0.0, 1.0, 1.0], dtype=torch.float32)
 
         sample = self.loader(path)
 

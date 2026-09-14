@@ -95,6 +95,8 @@ def main() -> None:
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--fkd-seed", default=42, type=int)
     parser.add_argument("--skip-completed", action="store_true")
+    parser.add_argument("--force-full-prefix", default=None,
+                        help="force matching filenames to replay the full image instead of source RRC coordinates")
     args = parser.parse_args()
     manifest_path = args.output_fkd / "relabel_manifest.json"
     batches_per_epoch = math.ceil(args.classes * args.ipc / args.batch_size)
@@ -126,6 +128,7 @@ def main() -> None:
         fkd_path=str(args.source_fkd), mode="fkd_load",
         args_epoch=args.epochs, args_bs=args.batch_size,
         root=str(args.image_root), transform=transform,
+        force_full_prefix=args.force_full_prefix,
     )
     if len(dataset) != args.classes * args.ipc or len(dataset.classes) != args.classes:
         raise RuntimeError(f"unexpected dataset: {len(dataset)} images, {len(dataset.classes)} classes")
@@ -151,6 +154,7 @@ def main() -> None:
         "persistent_workers": False, "seed": args.seed, "fkd_seed": args.fkd_seed,
         "temperature": 20.0, "temperature_role": "post-eval softmax",
         "normalization": {"mean": list(args.mean), "std": list(args.std)},
+        "force_full_prefix": args.force_full_prefix,
         "min_scale_crops": 0.08, "max_scale_crops": 1.0,
         "crop_interpolation": "bilinear", "mix_type": "cutmix", "cutmix_alpha": 1.0,
         "use_fp16": True, "rescored_from_actual_replayed_views": True,
