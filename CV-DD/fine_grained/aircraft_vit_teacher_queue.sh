@@ -23,13 +23,15 @@ clone_pinned(){
   if [[ ! -d "$destination/.git" ]]; then
     git clone --filter=blob:none "$url" "$destination"
   fi
-  git -C "$destination" fetch origin "$commit" --depth=1
-  git -C "$destination" checkout --detach "$commit"
+  if [[ "$(git -C "$destination" rev-parse HEAD)" != "$commit" ]]; then
+    git -C "$destination" fetch origin "$commit" --depth=1
+    git -C "$destination" checkout --detach "$commit"
+  fi
   test "$(git -C "$destination" rev-parse HEAD)" = "$commit"
 }
 
 prepare_sources(){
-  python -m pip install --quiet ml-collections==0.1.1
+  python -c 'import ml_collections'
   clone_pinned https://github.com/jeonsworld/ViT-pytorch.git "$SOURCE_ROOT/ViT-pytorch" "$PLAIN_COMMIT"
   clone_pinned https://github.com/TACJu/TransFG.git "$SOURCE_ROOT/TransFG" "$TRANSFG_COMMIT"
   if [[ ! -s "$WEIGHTS" ]]; then
