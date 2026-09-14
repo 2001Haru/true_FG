@@ -13,6 +13,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", required=True, type=Path)
     parser.add_argument("--r0-results", required=True, type=Path)
+    parser.add_argument("--construction-manifest", type=Path)
+    parser.add_argument("--protocol", default="controlled_deco_style_regions_v1")
     args = parser.parse_args()
     roots = {
         "r0": args.r0_results,
@@ -21,10 +23,11 @@ def main():
     }
     rows = {name: [json.loads((root / f"ipc3_sseed{seed}.json").read_text()) for seed in (42, 43, 44)] for name, root in roots.items()}
     metrics = ("best_top1", "final_epoch_top1")
-    construction = json.loads((args.root / "construction/construction_manifest.json").read_text())
+    construction_manifest = args.construction_manifest or args.root / "construction/construction_manifest.json"
+    construction = json.loads(construction_manifest.read_text())
     result = {
-        "status": "complete", "protocol": "controlled_deco_style_regions_v1",
-        "construction_manifest": str((args.root / "construction/construction_manifest.json").resolve()),
+        "status": "complete", "protocol": args.protocol,
+        "construction_manifest": str(construction_manifest.resolve()),
         "groups": {name: {metric: stats([row[metric] for row in group]) for metric in metrics} for name, group in rows.items()},
         "paired_deltas": {},
         "storage": {key: construction[key] for key in ("ipc", "stored_images", "regions", "regions_per_class", "independent_sources_per_class", "window_area_ratio")},
