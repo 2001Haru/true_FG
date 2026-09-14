@@ -33,7 +33,8 @@ output.parent.mkdir(parents=True,exist_ok=True); tmp=output.with_suffix('.json.t
 PY
 
 relabel(){
- local method=$1 gpu=$2 image_root="$SOURCE_EXP/construction/selected/$method/ipc3"
+ local method=$1 gpu=$2 image_root
+ image_root="$SOURCE_EXP/construction/selected/$method/ipc3"
  CUDA_VISIBLE_DEVICES=$gpu python -u "$ROOT/CV-DD/fine_grained/rescore_fkd_views.py" --image-root "$image_root" \
   --source-fkd "$SOURCE_FKD" --output-fkd "$EXP/fkd/$method" --teacher "$TEACHER" --ipc 3 --classes 100 \
   --dataset-name A_imsize224 --epochs 400 --batch-size 20 --workers 8 --seed 42 --fkd-seed 42 \
@@ -49,7 +50,8 @@ failed=0; wait "$p0" || failed=1; wait "$p1" || failed=1; ((failed==0))
 date --iso-8601=seconds > "$EXP/status/relabel.complete"
 
 student(){
- local method=$1 seed=$2 gpu=$3 image_root="$SOURCE_EXP/construction/selected/$method/ipc3"
+ local method=$1 seed=$2 gpu=$3 image_root
+ image_root="$SOURCE_EXP/construction/selected/$method/ipc3"
  mkdir -p "$EXP/results/$method" "$EXP/post_eval/$method/sseed$seed"
  CUDA_VISIBLE_DEVICES=$gpu python -u "$ROOT/CV-DD/validate/train_fkd.py" --model ResNet18 --ipc 3 \
   --exp-name "deco_rrc_${method}_s${seed}" --original-data-path "$image_root" --fkd-path "$EXP/fkd/$method" \
