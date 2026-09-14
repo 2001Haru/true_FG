@@ -156,6 +156,8 @@ def get_args():
                         default='random', help='student weight initialization')
     parser.add_argument('--keep-topk', type=int, default=1000,
                         help='keep topk logits for kd loss')
+    parser.add_argument('--teacher-temperature', type=float, default=None,
+                        help='target softmax temperature; defaults to student temperature')
     parser.add_argument('-T', '--temperature', type=float,
                         default=3.0, help='temperature for distillation loss')
     parser.add_argument('--wandb-project', type=str,
@@ -737,7 +739,7 @@ def train(model, args, epoch=None):
             else:
                 output = F.log_softmax(output/args.temperature, dim=1)
                 if not args.fkd_target_probabilities:
-                    partial_soft_label = F.softmax(partial_soft_label/args.temperature, dim=1)
+                    partial_soft_label = F.softmax(partial_soft_label/(args.teacher_temperature if args.teacher_temperature is not None else args.temperature), dim=1)
                 loss = loss_function_kl(output, partial_soft_label)
                 # loss = loss * args.temperature * args.temperature
             loss = loss / args.gradient_accumulation_steps
@@ -890,6 +892,7 @@ def export_per_class_accuracy(model, args, best_acc1):
         'optimizer_updates_per_epoch': len(args.train_loader),
         'total_optimizer_updates': args.epochs * len(args.train_loader),
         'temperature': args.temperature,
+        'teacher_temperature': args.teacher_temperature if args.teacher_temperature is not None else args.temperature,
         'fkd_seed': args.fkd_seed,
         'mix_type': args.mix_type,
         'synthetic_data_path': os.path.abspath(args.original_data_path),

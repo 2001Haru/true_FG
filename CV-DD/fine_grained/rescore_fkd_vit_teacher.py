@@ -51,7 +51,7 @@ def patched_fetch(fetcher, possibly_batched_index):
         data = [fetcher.dataset[index] for index in possibly_batched_index]
     else:
         data = fetcher.dataset[possibly_batched_index]
-    return fetcher.collate_fn(data), mix_index.cpu(), mix_lam, mix_bbox, soft_label.cpu()
+    return fetcher.collate_fn(data), None if mix_index is None else mix_index.cpu(), mix_lam, mix_bbox, soft_label.cpu()
 
 
 _MapDatasetFetcher.fetch = patched_fetch
@@ -71,6 +71,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--fkd-seed", default=42, type=int)
     parser.add_argument("--skip-completed", action="store_true")
+    parser.add_argument("--mix-type", choices=("cutmix", "none"), default="cutmix")
     return parser.parse_args()
 
 
@@ -128,7 +129,7 @@ def main() -> None:
         pin_memory=True,
         persistent_workers=False,
     )
-    mix_args = SimpleNamespace(mode="fkd_load", mix_type="cutmix", cutmix=1.0, mixup=0.8)
+    mix_args = SimpleNamespace(mode="fkd_load", mix_type=args.mix_type, cutmix=1.0, mixup=0.8)
     args.output_fkd.mkdir(parents=True, exist_ok=True)
     source_manifest = args.source_fkd / "relabel_manifest.json"
     manifest = {
@@ -143,6 +144,7 @@ def main() -> None:
         "teacher_checkpoint": str(args.checkpoint.resolve()),
         "teacher_checkpoint_sha256": sha256_file(args.checkpoint),
         "teacher_mode": "eval",
+        "mix_type": args.mix_type,
         "teacher_forward_split": [20],
         "teacher_inference_dtype": "float32",
         "normalization": {"mean": list(IMAGENET_MEAN), "std": list(IMAGENET_STD)},
@@ -171,6 +173,8 @@ def main() -> None:
         for batch_index, batch_data in enumerate(loader):
             images, _, flip_status, coords_status = batch_data[0]
             mix_index, mix_lam, mix_bbox = batch_data[1:4]
+            if args.mix_type == "none" and any(x is not None for x in (mix_index, mix_lam, mix_bbox)):
+                raise RuntimeError("unmixed replay received mixing metadata")
             images = images.cuda(non_blocking=True)
             mixed, _, _, _ = mix_aug(images, mix_args, mix_index, mix_lam, mix_bbox)
             logits = inference_logits(model, args.kind, mixed).float()
@@ -190,7 +194,7 @@ def main() -> None:
                 destination.append((-(probability * log_probability).sum(1)).cpu())
             logit_std.append(values.std(dim=1, unbiased=False).cpu())
             torch.save(
-                [coords_status, flip_status, mix_index.cpu(), mix_lam, mix_bbox, values.half().cpu()],
+                [coords_status, flip_status, None if mix_index is None else mix_index.cpu(), mix_lam, mix_bbox, values.half().cpu()],
                 epoch_dir / f"batch_{batch_index}.tar",
             )
             batches += 1
