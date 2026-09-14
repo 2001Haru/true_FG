@@ -1,0 +1,20 @@
+import argparse,json,math,statistics
+from pathlib import Path
+def stats(values):
+ values=list(map(float,values));return {'count':len(values),'mean':statistics.mean(values),'median':statistics.median(values),'sample_std':statistics.stdev(values) if len(values)>1 else 0.0,'min':min(values),'max':max(values)}
+def main():
+ p=argparse.ArgumentParser();p.add_argument('--original',required=True,type=Path);p.add_argument('--replay',required=True,type=Path);p.add_argument('--output',required=True,type=Path);a=p.parse_args();original=json.loads(a.original.read_text());replay=json.loads(a.replay.read_text());errors=[]
+ if original['teacher_forward_images']!=160000 or replay['teacher_forward_images']!=160000:errors.append('query mismatch')
+ selected_same=0;aug_r0=aug_r2=r0_r2=0;top_gaps=[];paired_sds=[];paired_ses=[];selected_sds=[];winner_fractions=[];winner_diversity=[];gap_lt_sd=gap_lt_paired_sd=gap_lt_paired_se=0;r0_ranks=[];r2_ranks=[];classes=[]
+ for old,row in zip(original['details'],replay['details']):
+  if old['class_id']!=row['class_id']:errors.append('class order mismatch');continue
+  selected_same+=old['selected']==row['selected'];aug_r0+=row['selected']==row['r0_third'];aug_r2+=row['selected']==row['r2_third'];r0_r2+=row['r0_third']==row['r2_third']
+  candidates=row['candidates'];ordered=sorted(candidates,key=lambda x:(-x['score'],x['path']));top,runner=ordered[:2];gap=top['score']-runner['score'];diff=[x-y for x,y in zip(top['context_scores'],runner['context_scores'])];psd=statistics.stdev(diff);pse=psd/math.sqrt(len(diff));individual=[statistics.stdev(x['context_scores']) for x in candidates];scale=statistics.median(individual)
+  winners=[]
+  for context in range(8):winners.append(min(candidates,key=lambda x:(-x['context_scores'][context],x['path']))['path'])
+  win_fraction=sum(x==top['path'] for x in winners)/8;diversity=len(set(winners));ranking=[x['path'] for x in ordered]
+  top_gaps.append(gap);paired_sds.append(psd);paired_ses.append(pse);selected_sds.append(statistics.stdev(top['context_scores']));winner_fractions.append(win_fraction);winner_diversity.append(diversity);gap_lt_sd+=gap<scale;gap_lt_paired_sd+=gap<psd;gap_lt_paired_se+=gap<pse;r0_ranks.append(ranking.index(row['r0_third'])+1);r2_ranks.append(ranking.index(row['r2_third'])+1)
+  classes.append({'class_id':row['class_id'],'selected':top['path'],'runner_up':runner['path'],'top_gap':gap,'paired_context_difference_sd':psd,'paired_context_difference_se':pse,'median_candidate_context_sd':scale,'selected_context_sd':selected_sds[-1],'selected_wins_context_fraction':win_fraction,'context_winner_count':diversity,'r0_rank':r0_ranks[-1],'r2_rank':r2_ranks[-1]})
+ result={'status':'complete' if not errors and selected_same==100 else 'failed','original_manifest':str(a.original.resolve()),'replay_manifest':str(a.replay.resolve()),'teacher_forward_images_replayed':replay['teacher_forward_images'],'selection_replay_identical_classes':selected_same,'third_image_overlap':{'augaware_vs_r0':aug_r0,'augaware_vs_r2':aug_r2,'r0_vs_r2':r0_r2},'score_stability':{'top_minus_runner_gap':stats(top_gaps),'paired_top_minus_runner_context_sd':stats(paired_sds),'paired_top_minus_runner_standard_error':stats(paired_ses),'selected_candidate_context_sd':stats(selected_sds),'selected_wins_single_context_fraction':stats(winner_fractions),'distinct_single_context_winners':stats(winner_diversity),'classes_gap_below_median_candidate_context_sd':gap_lt_sd,'classes_gap_below_paired_context_sd':gap_lt_paired_sd,'classes_gap_below_paired_context_standard_error':gap_lt_paired_se,'r0_candidate_rank':stats(r0_ranks),'r2_candidate_rank':stats(r2_ranks)},'classes':classes,'errors':errors};a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(result,indent=2,sort_keys=True)+'\n');print(json.dumps({k:result[k] for k in ('status','teacher_forward_images_replayed','selection_replay_identical_classes','third_image_overlap','score_stability','errors')},indent=2))
+ if result['status']!='complete':raise SystemExit(1)
+if __name__=='__main__':main()

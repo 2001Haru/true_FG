@@ -68,7 +68,7 @@ def main():
    excluded={x0s[c],candidate};own_indices=[path_index[x] for x in full_grouped[c] if x not in anchors[c] and x not in excluded]
    own_w,own_b=class_grad(features[own_indices],probs[own_indices],c,set())
    references[candidate]=(0.5*own_w+0.5*other_w,0.5*own_b+0.5*other_b)
-  epochs=sorted(stable(range(400),f'fgdd-v2-contexts\0{c}')[:8]);scores={x:0.0 for x in candidate_sets[c]};contexts=[]
+  epochs=sorted(stable(range(400),f'fgdd-v2-contexts\0{c}')[:8]);scores={x:0.0 for x in candidate_sets[c]};context_scores={x:[] for x in candidate_sets[c]};contexts=[]
   for epoch in epochs:
    order=orders[epoch];position=order.index(r0_index[x0s[c]]);batch=position//20;row=position%20;batch_indices=order[batch*20:(batch+1)*20]
    payload=torch.load(a.r0_fkd/f'epoch_{epoch}/batch_{batch}.tar',map_location='cpu',weights_only=False);coords,flips,mix_index,_,bbox=payload[:5]
@@ -77,14 +77,15 @@ def main():
    if not all(torch.allclose(torch.as_tensor(x).float(),expected,atol=1e-7,rtol=0) for x in coords):raise RuntimeError('context is not full-frame')
    base=torch.stack([image_tensor(r0_paths[index],bool(flips[i])) for i,index in enumerate(batch_indices)]).to(a.device)
    original_w,original_b=gradient(base,teacher,backbone,head,initial_bn,bbox,mix_index.to(a.device));teacher_forward_images+=20
+   context_scores[x0s[c]].append(0.0)
    for candidate in candidate_sets[c]:
     if candidate==x0s[c]:continue
     changed=base.clone();changed[row]=image_tensor(candidate,bool(flips[row])).to(a.device)
     cand_w,cand_b=gradient(changed,teacher,backbone,head,initial_bn,bbox,mix_index.to(a.device));teacher_forward_images+=20
-    ref_w,ref_b=references[candidate];scores[candidate]+=float(((cand_w-original_w).cpu()*ref_w).sum()+((cand_b-original_b).cpu()*ref_b).sum())
+    ref_w,ref_b=references[candidate];contribution=float(((cand_w-original_w).cpu()*ref_w).sum()+((cand_b-original_b).cpu()*ref_b).sum());scores[candidate]+=contribution;context_scores[candidate].append(contribution)
    contexts.append({'epoch':epoch,'batch':batch,'row':row,'bbox':list(map(int,bbox)),'flip':bool(flips[row]),'original_donor_uses':int((mix_index==row).sum())})
   scores={path:value/8.0 for path,value in scores.items()};choice=max(candidate_sets[c],key=lambda x:(scores[x],tuple(-b for b in x.as_posix().encode())));selected.append(choice)
-  details.append({'class_id':c,'anchors':[str(x) for x in anchors[c]],'r0_third':str(x0s[c]),'r2_third':str(r2s[c]),'candidates':[{'path':str(x),'score':scores[x]} for x in candidate_sets[c]],'selected':str(choice),'selected_score':scores[choice],'contexts':contexts})
+  details.append({'class_id':c,'anchors':[str(x) for x in anchors[c]],'r0_third':str(x0s[c]),'r2_third':str(r2s[c]),'candidates':[{'path':str(x),'score':scores[x],'context_scores':context_scores[x]} for x in candidate_sets[c]],'selected':str(choice),'selected_score':scores[choice],'contexts':contexts})
  root=a.output_root/'selected/r2_augaware/ipc3'
  for c in range(100):
   directory=root/f'{c:03d}';directory.mkdir(parents=True,exist_ok=True);chosen=anchors[c]+[selected[c]]
