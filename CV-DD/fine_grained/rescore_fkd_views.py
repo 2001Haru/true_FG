@@ -65,14 +65,14 @@ def atomic_json(payload: dict, path: Path) -> None:
     os.replace(temporary, path)
 
 
-def load_teacher(path: Path) -> nn.Module:
+def load_teacher(path: Path, classes: int) -> nn.Module:
     state = torch.load(path, map_location="cpu", weights_only=True)
     if isinstance(state, dict) and "model" in state and isinstance(state["model"], dict):
         state = state["model"]
     if any(key.startswith("module.") for key in state):
         state = {key.removeprefix("module."): value for key, value in state.items()}
     model = models.resnet18(weights=None)
-    model.fc = nn.Linear(model.fc.in_features, 10)
+    model.fc = nn.Linear(model.fc.in_features, classes)
     model.load_state_dict(state, strict=True)
     return model.cuda().train()
 
@@ -84,7 +84,11 @@ def main() -> None:
     parser.add_argument("--source-fkd", required=True, type=Path)
     parser.add_argument("--output-fkd", required=True, type=Path)
     parser.add_argument("--teacher", required=True, type=Path)
-    parser.add_argument("--ipc", required=True, type=int, choices=(10, 50))
+    parser.add_argument("--ipc", required=True, type=int)
+    parser.add_argument("--classes", default=10, type=int)
+    parser.add_argument("--dataset-name", default="imagenet-nette")
+    parser.add_argument("--mean", nargs=3, type=float, default=MEAN)
+    parser.add_argument("--std", nargs=3, type=float, default=STD)
     parser.add_argument("--epochs", default=300, type=int)
     parser.add_argument("--batch-size", default=10, type=int)
     parser.add_argument("--workers", default=2, type=int)
@@ -93,7 +97,8 @@ def main() -> None:
     parser.add_argument("--skip-completed", action="store_true")
     args = parser.parse_args()
     manifest_path = args.output_fkd / "relabel_manifest.json"
-    expected_batches = args.epochs * args.ipc
+    batches_per_epoch = math.ceil(args.classes * args.ipc / args.batch_size)
+    expected_batches = args.epochs * batches_per_epoch
     if args.skip_completed and manifest_path.is_file():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         files = list(args.output_fkd.glob("epoch_*/batch_*.tar"))
@@ -106,7 +111,7 @@ def main() -> None:
     torch.cuda.manual_seed_all(args.seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
-    teacher = load_teacher(args.teacher)
+    teacher = load_teacher(args.teacher, args.classes)
     transform = ComposeWithCoords(
         transforms=[
             RandomResizedCropWithCoords(
@@ -114,7 +119,7 @@ def main() -> None:
             ),
             RandomHorizontalFlipWithRes(),
             transforms.ToTensor(),
-            transforms.Normalize(MEAN, STD),
+            transforms.Normalize(args.mean, args.std),
         ]
     )
     dataset = ImageFolder_FKD_MIX(
@@ -122,7 +127,7 @@ def main() -> None:
         args_epoch=args.epochs, args_bs=args.batch_size,
         root=str(args.image_root), transform=transform,
     )
-    if len(dataset) != 10 * args.ipc or len(dataset.classes) != 10:
+    if len(dataset) != args.classes * args.ipc or len(dataset.classes) != args.classes:
         raise RuntimeError(f"unexpected dataset: {len(dataset)} images, {len(dataset.classes)} classes")
     generator = torch.Generator().manual_seed(args.fkd_seed)
     sampler = torch.utils.data.RandomSampler(dataset, generator=generator)
@@ -133,7 +138,8 @@ def main() -> None:
     mix_args = SimpleNamespace(mode="fkd_load", mix_type="cutmix", cutmix=1.0, mixup=0.8)
     args.output_fkd.mkdir(parents=True, exist_ok=True)
     manifest = {
-        "status": "running", "dataset_name": "imagenet-nette", "ipc": args.ipc,
+        "status": "running", "dataset_name": args.dataset_name, "ipc": args.ipc,
+        "classes": args.classes,
         "synthetic_data_path": str(args.image_root.resolve()),
         "fkd_path": str(args.output_fkd.resolve()),
         "source_fkd": str(args.source_fkd.resolve()),
@@ -141,9 +147,10 @@ def main() -> None:
         "metadata_replay": ["batch order", "RRC coords", "flip", "CutMix index", "CutMix lambda", "CutMix bbox"],
         "teacher_path": str(args.teacher.resolve()), "teacher_sha256": sha256(args.teacher),
         "teacher_mode": "train", "epochs": args.epochs, "batch_size": args.batch_size,
-        "teacher_forward_split": [5, 5], "workers": args.workers,
+        "teacher_forward_split": [args.batch_size // 2, args.batch_size - args.batch_size // 2], "workers": args.workers,
         "persistent_workers": False, "seed": args.seed, "fkd_seed": args.fkd_seed,
         "temperature": 20.0, "temperature_role": "post-eval softmax",
+        "normalization": {"mean": list(args.mean), "std": list(args.std)},
         "min_scale_crops": 0.08, "max_scale_crops": 1.0,
         "crop_interpolation": "bilinear", "mix_type": "cutmix", "cutmix_alpha": 1.0,
         "use_fp16": True, "rescored_from_actual_replayed_views": True,
@@ -160,16 +167,17 @@ def main() -> None:
             mix_index, mix_lam, mix_bbox = batch_data[1:4]
             images = images.cuda(non_blocking=True)
             mixed, _, _, _ = mix_aug(images, mix_args, mix_index, mix_lam, mix_bbox)
-            first = teacher(mixed[:5])
-            second = teacher(mixed[5:])
+            split = len(mixed) // 2
+            first = teacher(mixed[:split])
+            second = teacher(mixed[split:])
             logits = torch.cat((first, second), dim=0).half().cpu()
             torch.save(
                 [coords_status, flip_status, mix_index.cpu(), mix_lam, mix_bbox, logits],
                 epoch_dir / f"batch_{batch_index}.tar",
             )
             batches += 1
-        if batches != args.ipc:
-            raise RuntimeError(f"epoch {epoch}: {batches} batches != IPC {args.ipc}")
+        if batches != batches_per_epoch:
+            raise RuntimeError(f"epoch {epoch}: {batches} batches != {batches_per_epoch}")
         print(f"epoch {epoch}/{args.epochs - 1} batches={batches} seconds={time.time()-started:.3f}", flush=True)
     files = list(args.output_fkd.glob("epoch_*/batch_*.tar"))
     if len(files) != expected_batches:
