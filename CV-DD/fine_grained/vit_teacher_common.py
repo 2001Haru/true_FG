@@ -6,8 +6,8 @@ import hashlib
 import importlib
 import json
 import random
-import subprocess
 import sys
+import types
 from pathlib import Path
 from typing import Iterable, Iterator
 
@@ -48,12 +48,41 @@ def atomic_json(payload: dict, path: Path) -> None:
 
 
 def source_commit(source_root: Path) -> str:
-    return subprocess.check_output(
-        ["git", "-C", str(source_root), "rev-parse", "HEAD"], text=True
-    ).strip()
+    marker = source_root / "PINNED_COMMIT"
+    if not marker.is_file():
+        raise RuntimeError(f"vendored source lacks PINNED_COMMIT: {source_root}")
+    if (source_root / ".git").exists():
+        raise RuntimeError(f"vendored source must not contain nested .git metadata: {source_root}")
+    return marker.read_text(encoding="utf-8").strip()
 
 
 def import_upstream(source_root: Path):
+    try:
+        import ml_collections  # noqa: F401
+    except ModuleNotFoundError:
+        module = types.ModuleType("ml_collections")
+
+        class ConfigDict(dict):
+            """Minimal upstream-compatible container for the pinned config files."""
+
+            def __getattr__(self, name):
+                try:
+                    return self[name]
+                except KeyError as error:
+                    raise AttributeError(name) from error
+
+            def __setattr__(self, name, value):
+                self[name] = value
+
+            def __delattr__(self, name):
+                try:
+                    del self[name]
+                except KeyError as error:
+                    raise AttributeError(name) from error
+
+        module.ConfigDict = ConfigDict
+        module.__version__ = "repository_fallback_v1"
+        sys.modules["ml_collections"] = module
     sys.path.insert(0, str(source_root.resolve()))
     try:
         module = importlib.import_module("models.modeling")
@@ -117,6 +146,7 @@ def build_teacher(
         "classification_head_weight_norm": float(head.weight.detach().float().norm()),
         "classification_head_bias_norm": float(head.bias.detach().float().norm()),
         "parameters": sum(parameter.numel() for parameter in model.parameters()),
+        "config_container": getattr(sys.modules["ml_collections"], "__version__", "unknown"),
         "pretrained_block_loading": (
             "encoder_blocks_0_to_10_loaded; part_layer_randomly_initialized"
             if kind == "transfg"

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 EXP_ROOT="${EXP_ROOT:-/linxi/dataset/FG_ViT_Teachers/aircraft_seed42_224_v1}"
-SOURCE_ROOT="$EXP_ROOT/sources"
+SOURCE_ROOT="$ROOT_DIR/third_party/teacher_backbones"
 WEIGHT_DIR=/linxi/models/vit/imagenet21k
 WEIGHTS="$WEIGHT_DIR/ViT-B_16.npz"
 TRAIN_INDEX=/linxi/dataset/FG_SRe2L_repro/v1/datasets/A_imsize224/train
@@ -15,35 +15,24 @@ R0_RESULTS=/linxi/dataset/FG_SoftAugFactorial_v2/aircraft_ipc3_v1/results/fullfr
 PLAIN_COMMIT=460a162767de1722a014ed2261463dbbc01196b6
 TRANSFG_COMMIT=9336fba46a4ac8ed2e33072c5f74ab459b114e4a
 
-mkdir -p "$EXP_ROOT"/{logs,status,locks,preflight,teachers,fkd,results,post_eval,summary,audits} "$SOURCE_ROOT" "$WEIGHT_DIR"
+mkdir -p "$EXP_ROOT"/{logs,status,locks,preflight,teachers,fkd,results,post_eval,summary,audits} "$WEIGHT_DIR"
 ts(){ date --iso-8601=seconds; }
 
-clone_pinned(){
-  local url="$1" destination="$2" commit="$3"
-  if [[ ! -d "$destination/.git" ]]; then
-    git clone --filter=blob:none "$url" "$destination"
-  fi
-  if [[ "$(git -C "$destination" rev-parse HEAD)" != "$commit" ]]; then
-    git -C "$destination" fetch origin "$commit" --depth=1
-    git -C "$destination" checkout --detach "$commit"
-  fi
-  test "$(git -C "$destination" rev-parse HEAD)" = "$commit"
-}
-
 prepare_sources(){
-  python -c 'import ml_collections'
-  clone_pinned https://github.com/jeonsworld/ViT-pytorch.git "$SOURCE_ROOT/ViT-pytorch" "$PLAIN_COMMIT"
-  clone_pinned https://github.com/TACJu/TransFG.git "$SOURCE_ROOT/TransFG" "$TRANSFG_COMMIT"
+  test ! -e "$SOURCE_ROOT/ViT-pytorch/.git"
+  test ! -e "$SOURCE_ROOT/TransFG/.git"
+  test "$(tr -d '\r\n' < "$SOURCE_ROOT/ViT-pytorch/PINNED_COMMIT")" = "$PLAIN_COMMIT"
+  test "$(tr -d '\r\n' < "$SOURCE_ROOT/TransFG/PINNED_COMMIT")" = "$TRANSFG_COMMIT"
   if [[ ! -s "$WEIGHTS" ]]; then
-    tmp="$WEIGHTS.download.$$"
-    curl --fail --location --retry 5 --retry-delay 5 \
+    partial="$WEIGHTS.partial"
+    curl --fail --location --retry 5 --retry-delay 5 --continue-at - \
       https://storage.googleapis.com/vit_models/imagenet21k/ViT-B_16.npz \
-      --output "$tmp"
-    mv "$tmp" "$WEIGHTS"
+      --output "$partial"
+    mv "$partial" "$WEIGHTS"
   fi
   sha256sum "$WEIGHTS" > "$EXP_ROOT/audits/ViT-B_16.npz.sha256"
-  git -C "$SOURCE_ROOT/ViT-pytorch" rev-parse HEAD > "$EXP_ROOT/audits/vit_source_commit.txt"
-  git -C "$SOURCE_ROOT/TransFG" rev-parse HEAD > "$EXP_ROOT/audits/transfg_source_commit.txt"
+  cp "$SOURCE_ROOT/ViT-pytorch/PINNED_COMMIT" "$EXP_ROOT/audits/vit_source_commit.txt"
+  cp "$SOURCE_ROOT/TransFG/PINNED_COMMIT" "$EXP_ROOT/audits/transfg_source_commit.txt"
 }
 
 run_preflight(){
