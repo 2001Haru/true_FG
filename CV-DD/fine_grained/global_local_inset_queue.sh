@@ -2,9 +2,9 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 EXP="${EXP_ROOT:-/linxi/dataset/FGDD_global_local/aircraft_ipc3_seed0_v1}"
-RANDOM=/linxi/dataset/FG_CoDA_standard/v2/baselines/random_real_standard
-R0="$RANDOM/selected/A_imsize224/rseed0/ipc3"
-SELECTION="$RANDOM/manifests/A_imsize224/rseed0/ipc3.json"
+RANDOM_REAL_ROOT=/linxi/dataset/FG_CoDA_standard/v2/baselines/random_real_standard
+R0="$RANDOM_REAL_ROOT/selected/A_imsize224/rseed0/ipc3"
+SELECTION="$RANDOM_REAL_ROOT/manifests/A_imsize224/rseed0/ipc3.json"
 RAW=/linxi/dataset/FD2/raw/fgvc-aircraft-2013b/data
 TRANS_ROOT=/linxi/dataset/FG_ViT_Teachers/aircraft_seed42_224_v1
 TEACHER=/linxi/dataset/FG_SRe2L_standard/v1/teachers/A_imsize224/tseed42/ResNet18.pth
