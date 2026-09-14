@@ -14,6 +14,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 import torchvision.transforms as transforms
 from torch.utils.data._utils.fetch import _MapDatasetFetcher
 from torchvision.transforms import InterpolationMode
