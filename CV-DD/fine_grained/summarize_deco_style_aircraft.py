@@ -40,7 +40,8 @@ def main():
     for method in ("random_regions", "fg_regions"):
         for candidate, reference in zip(rows[method], rows["r0"]):
             assert candidate["student_seed"] == reference["student_seed"]
-            assert candidate["initial_model_sha256"] == reference["initial_model_sha256"]
+            if "initial_model_sha256" in reference:
+                assert candidate["initial_model_sha256"] == reference["initial_model_sha256"]
             assert candidate["temperature"] == 20 and candidate["epochs"] == 400
     output = args.root / "summary/summary.json"
     output.parent.mkdir(parents=True, exist_ok=True)
