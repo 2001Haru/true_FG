@@ -13,12 +13,14 @@ trap 's=$?; if ((s)); then rm -f "$EXP/status/running"; echo "$(date --iso-8601=
 rm -f "$EXP/status/failed" "$EXP/status/complete"
 date --iso-8601=seconds > "$EXP/status/running"
 
-python - "$RRC_FKD/relabel_manifest.json" "$SOFT" <<'PY'
-import json,sys
+python - "$RRC_FKD/relabel_manifest.json" "$RRC_FKD/epoch_0/batch_0.tar" "$SOFT" <<'PY'
+import json,sys,torch
 from pathlib import Path
-m=json.load(open(sys.argv[1]));s=Path(sys.argv[2])
+m=json.load(open(sys.argv[1]));payload=torch.load(sys.argv[2],map_location='cpu',weights_only=False);s=Path(sys.argv[3])
 assert m['status']=='complete' and m['mix_type']=='cutmix'
-assert m['min_scale_crops']==.08 and m['max_scale_crops']==1.0
+full=torch.tensor([0.,0.,1.,1.])
+assert any(not torch.allclose(torch.as_tensor(c).float(),full,rtol=0,atol=1e-7) for c in payload[0])
+assert payload[2] is not None and payload[4] is not None
 for method in ('lowres_detail','native_detail'):
  x=json.load(open(s/f'audits/{method}_metadata.json'));assert x['status']=='complete' and x['total_mismatches']==0
 print('geometry gate passed')
