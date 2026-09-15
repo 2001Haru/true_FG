@@ -3,10 +3,12 @@
 import argparse
 import hashlib
 import json
+import math
 import os
 import random
 import sys
 import time
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -68,6 +70,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--workers", default=TRAIN_WORKERS, type=int)
     parser.add_argument("--persistent-workers", action="store_true")
     parser.add_argument("--val-batch-size", default=VALIDATION_BATCH_SIZE, type=int)
+    parser.add_argument("--protocol-name", default=PROTOCOL_NAME)
+    parser.add_argument(
+        "--train-crop-mode", choices=("mild_rc", "rrc"), default="mild_rc",
+        help="mild_rc is the original Resize256+RandomCrop224 protocol; rrc is RandomResizedCrop224",
+    )
+    parser.add_argument("--rrc-min-scale", default=0.08, type=float)
+    parser.add_argument("--rrc-max-scale", default=1.0, type=float)
+    parser.add_argument(
+        "--manifest-loss-weighting",
+        choices=("equal", "cluster_size"),
+        default="equal",
+        help="Optional per-sample CE weighting for an audited selection manifest.",
+    )
     args = parser.parse_args()
     if args.total_updates <= 0 or args.batch_size <= 0 or args.eval_every_updates <= 0:
         parser.error("update, batch, and evaluation intervals must be positive")
@@ -79,6 +94,10 @@ def parse_args() -> argparse.Namespace:
         parser.error("backbone LR must satisfy 0 <= minimum <= initial")
     if not 0 <= args.head_min_lr <= args.head_lr:
         parser.error("head LR must satisfy 0 <= minimum <= initial")
+    if args.manifest_loss_weighting != "equal" and args.train_manifest is None:
+        parser.error("non-equal manifest loss weighting requires --train-manifest")
+    if not 0 < args.rrc_min_scale <= args.rrc_max_scale <= 1:
+        parser.error("RRC scale must satisfy 0 < min <= max <= 1")
     return args
 
 
@@ -110,16 +129,26 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def make_transforms() -> tuple[transforms.Compose, transforms.Compose]:
+def make_transforms(args: argparse.Namespace | None = None) -> tuple[transforms.Compose, transforms.Compose]:
     normalize = transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD)
-    train_transform = transforms.Compose(
+    crop_mode = getattr(args, "train_crop_mode", "mild_rc")
+    rrc_min_scale = getattr(args, "rrc_min_scale", 0.08)
+    rrc_max_scale = getattr(args, "rrc_max_scale", 1.0)
+    spatial_train = (
         [
             transforms.Resize(RESIZE_SIZE, interpolation=InterpolationMode.BILINEAR),
             transforms.RandomCrop(IMAGE_SIZE),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            normalize,
         ]
+        if crop_mode == "mild_rc"
+        else [
+            transforms.RandomResizedCrop(
+                IMAGE_SIZE, scale=(rrc_min_scale, rrc_max_scale),
+                interpolation=InterpolationMode.BILINEAR,
+            )
+        ]
+    )
+    train_transform = transforms.Compose(
+        spatial_train + [transforms.RandomHorizontalFlip(), transforms.ToTensor(), normalize]
     )
     validation_transform = transforms.Compose(
         [
@@ -254,7 +283,7 @@ def atomic_json(path: Path, payload: dict) -> None:
 class ManifestImageDataset(torch.utils.data.Dataset):
     """ImageFolder-equivalent source list backed by an audited selection manifest."""
 
-    def __init__(self, manifest_path: Path, transform) -> None:
+    def __init__(self, manifest_path: Path, transform, loss_weighting: str = "equal") -> None:
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
         if payload.get("status") != "complete":
             raise RuntimeError(f"selection manifest is incomplete: {manifest_path}")
@@ -265,6 +294,24 @@ class ManifestImageDataset(torch.utils.data.Dataset):
         self.classes = sorted({row["class_folder"] for row in rows})
         self.class_to_idx = {name: index for index, name in enumerate(self.classes)}
         self.samples = []
+        self.loss_weighting = loss_weighting
+        self.loss_weights = [] if loss_weighting != "equal" else None
+        rows_per_class = defaultdict(list)
+        for row in rows:
+            rows_per_class[row["class_folder"]].append(row)
+        if loss_weighting == "cluster_size":
+            if payload.get("selection_method") != "spherical_kmeans2" or payload.get("ipc") != 2:
+                raise RuntimeError(
+                    "cluster-size loss weighting requires a spherical_kmeans2 IPC2 manifest"
+                )
+            for class_name, class_rows in rows_per_class.items():
+                if len(class_rows) != 2:
+                    raise RuntimeError(f"cluster-size weighting expects two rows in {class_name}")
+                sizes = [int(row.get("cluster_size", 0)) for row in class_rows]
+                if any(size <= 0 for size in sizes):
+                    raise RuntimeError(f"invalid cluster sizes in {class_name}: {sizes}")
+        elif loss_weighting != "equal":
+            raise ValueError(f"unknown manifest loss weighting: {loss_weighting}")
         for row in rows:
             target = self.class_to_idx[row["class_folder"]]
             if int(row["class_id"]) != target:
@@ -275,11 +322,38 @@ class ManifestImageDataset(torch.utils.data.Dataset):
             if not source.is_file():
                 raise FileNotFoundError(source)
             self.samples.append((str(source), target))
+            if self.loss_weights is not None:
+                class_rows = rows_per_class[row["class_folder"]]
+                class_size = sum(int(item["cluster_size"]) for item in class_rows)
+                self.loss_weights.append(2.0 * int(row["cluster_size"]) / class_size)
         if len({path for path, _ in self.samples}) != len(self.samples):
             raise RuntimeError("selection manifest contains duplicate source paths")
         self.targets = [target for _, target in self.samples]
         self.transform = transform
         self.manifest_path = manifest_path.resolve()
+        if self.loss_weights is None:
+            self.loss_weight_audit = {
+                "mode": "equal",
+                "formula": None,
+                "minimum": 1.0,
+                "maximum": 1.0,
+                "class_weight_sum_minimum": 2.0,
+                "class_weight_sum_maximum": 2.0,
+            }
+        else:
+            sums = defaultdict(float)
+            for (_, target), weight in zip(self.samples, self.loss_weights):
+                sums[target] += weight
+            if any(not math.isclose(value, 2.0, abs_tol=1e-12) for value in sums.values()):
+                raise RuntimeError("cluster-size loss weights do not sum to two in every class")
+            self.loss_weight_audit = {
+                "mode": "cluster_size",
+                "formula": "2 * selected_representative_cluster_size / full_class_size",
+                "minimum": min(self.loss_weights),
+                "maximum": max(self.loss_weights),
+                "class_weight_sum_minimum": min(sums.values()),
+                "class_weight_sum_maximum": max(sums.values()),
+            }
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -289,17 +363,23 @@ class ManifestImageDataset(torch.utils.data.Dataset):
         image = datasets.folder.default_loader(path)
         if self.transform is not None:
             image = self.transform(image)
-        return image, target
+        if self.loss_weights is None:
+            return image, target
+        return image, target, self.loss_weights[index]
 
 
 def main() -> None:
     args = parse_args()
     seed_everything(args.student_seed)
     device = torch.device("cuda")
-    train_transform, validation_transform = make_transforms()
+    train_transform, validation_transform = make_transforms(args)
     validation_dataset = datasets.ImageFolder(args.val_dir, transform=validation_transform)
     if args.train_manifest is not None:
-        train_dataset = ManifestImageDataset(args.train_manifest, transform=train_transform)
+        train_dataset = ManifestImageDataset(
+            args.train_manifest,
+            transform=train_transform,
+            loss_weighting=args.manifest_loss_weighting,
+        )
         train_source_type = "selection_manifest"
         train_source = str(args.train_manifest.resolve())
     else:
@@ -367,7 +447,9 @@ def main() -> None:
         nesterov=False,
     )
     model.to(device)
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(
+        reduction="none" if args.manifest_loss_weighting == "cluster_size" else "mean"
+    )
 
     args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
     history = []
@@ -381,9 +463,16 @@ def main() -> None:
     while updates_completed < args.total_updates:
         epochs_started += 1
         model.train()
-        for images, targets in train_loader:
+        for batch in train_loader:
             if updates_completed >= args.total_updates:
                 break
+            if args.manifest_loss_weighting == "cluster_size":
+                images, targets, sample_loss_weights = batch
+                sample_loss_weights = sample_loss_weights.to(
+                    device=device, dtype=torch.float32, non_blocking=True
+                )
+            else:
+                images, targets = batch
             images = images.to(device, non_blocking=True)
             targets = targets.to(device, non_blocking=True)
             backbone_lr_used = optimizer.param_groups[0]["lr"]
@@ -391,6 +480,8 @@ def main() -> None:
             optimizer.zero_grad(set_to_none=True)
             logits = model(images)
             loss = criterion(logits, targets)
+            if args.manifest_loss_weighting == "cluster_size":
+                loss = (loss * sample_loss_weights).mean()
             loss.backward()
             optimizer.step()
             updates_completed += 1
@@ -424,7 +515,7 @@ def main() -> None:
     final_checkpoint = args.checkpoint_dir / "final.pth.tar"
     torch.save(
         {
-            "protocol": PROTOCOL_NAME,
+            "protocol": args.protocol_name,
             "updates_completed": updates_completed,
             "state_dict": model.state_dict(),
             "optimizer": optimizer.state_dict(),
@@ -434,13 +525,26 @@ def main() -> None:
     )
     payload = {
         "status": "complete",
-        "protocol": PROTOCOL_NAME,
+        "protocol": args.protocol_name,
         "protocol_spec": str(PROTOCOL_SPEC_PATH.resolve()),
         "protocol_spec_sha256": file_sha256(PROTOCOL_SPEC_PATH),
         "dataset": args.dataset_name,
         "ipc": args.ipc,
         "training_target": "hard_coarse_label",
         "loss": "cross_entropy",
+        "training_loss_sample_weighting": args.manifest_loss_weighting,
+        "training_loss_reduction": "ordinary_batch_mean",
+        "training_loss_weight_formula": (
+            train_dataset.loss_weight_audit["formula"]
+            if isinstance(train_dataset, ManifestImageDataset)
+            else None
+        ),
+        "training_loss_weight_audit": (
+            train_dataset.loss_weight_audit
+            if isinstance(train_dataset, ManifestImageDataset)
+            else None
+        ),
+        "bn_input_sampling": "uniform_shuffled_samples_unmodified_by_loss_weighting",
         "label_smoothing": 0.0,
         "cutmix": False,
         "mixup": False,
@@ -482,7 +586,15 @@ def main() -> None:
         "bn_running_statistics": "updated_in_train_mode",
         "normalization_mean": list(IMAGENET_MEAN),
         "normalization_std": list(IMAGENET_STD),
-        "train_transform": "Resize(256,bilinear)->RandomCrop(224)->HorizontalFlip(p=0.5)",
+        "train_crop_mode": args.train_crop_mode,
+        "rrc_min_scale": (args.rrc_min_scale if args.train_crop_mode == "rrc" else None),
+        "rrc_max_scale": (args.rrc_max_scale if args.train_crop_mode == "rrc" else None),
+        "rrc_ratio": ([0.75, 4.0 / 3.0] if args.train_crop_mode == "rrc" else None),
+        "train_transform": (
+            "Resize(256,bilinear)->RandomCrop(224)->HorizontalFlip(p=0.5)"
+            if args.train_crop_mode == "mild_rc" else
+            f"RandomResizedCrop(224,scale=[{args.rrc_min_scale},{args.rrc_max_scale}],ratio=[0.75,1.3333333333333333],bilinear)->HorizontalFlip(p=0.5)"
+        ),
         "test_transform": "Resize(256,bilinear)->CenterCrop(224)",
         "image_size": IMAGE_SIZE,
         "train_images": len(train_dataset),

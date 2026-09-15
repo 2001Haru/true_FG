@@ -50,12 +50,16 @@ def main() -> None:
     parser.add_argument("--ipc", required=True, type=int)
     parser.add_argument("--student-seed", required=True, type=int)
     parser.add_argument("--validation-images", required=True, type=int)
+    parser.add_argument("--protocol-name", default=PROTOCOL_NAME)
+    parser.add_argument("--train-crop-mode", choices=("mild_rc", "rrc"))
+    parser.add_argument("--rrc-min-scale", default=0.08, type=float)
+    parser.add_argument("--rrc-max-scale", default=1.0, type=float)
     args = parser.parse_args()
     payload = json.loads(args.result.read_text(encoding="utf-8"))
     protocol_spec = Path(__file__).resolve().with_name("hard_label_v1_protocol.json")
     expected = {
         "status": "complete",
-        "protocol": PROTOCOL_NAME,
+        "protocol": args.protocol_name,
         "protocol_spec_sha256": sha256(protocol_spec),
         "dataset": args.dataset,
         "ipc": args.ipc,
@@ -102,6 +106,10 @@ def main() -> None:
         "scheduler_endpoint_backbone_lr": BACKBONE_MIN_LR,
         "scheduler_endpoint_head_lr": HEAD_MIN_LR,
     }
+    if args.train_crop_mode is not None:
+        expected["train_crop_mode"] = args.train_crop_mode
+        expected["rrc_min_scale"] = args.rrc_min_scale if args.train_crop_mode == "rrc" else None
+        expected["rrc_max_scale"] = args.rrc_max_scale if args.train_crop_mode == "rrc" else None
     errors = []
     for key, value in expected.items():
         if not same(payload.get(key), value):

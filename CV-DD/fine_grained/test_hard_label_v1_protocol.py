@@ -6,6 +6,7 @@ import tempfile
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 import torch
 import torch.nn as nn
@@ -82,6 +83,21 @@ class HardLabelV1ProtocolTest(unittest.TestCase):
         )
         self.assertEqual(tuple(train.transforms[-1].mean), IMAGENET_MEAN)
         self.assertEqual(tuple(train.transforms[-1].std), IMAGENET_STD)
+
+    def test_rrc_variant_changes_only_training_spatial_transform(self):
+        args = SimpleNamespace(train_crop_mode="rrc", rrc_min_scale=0.08, rrc_max_scale=1.0)
+        train, validation = make_transforms(args)
+        self.assertEqual(
+            [type(item) for item in train.transforms],
+            [transforms.RandomResizedCrop, transforms.RandomHorizontalFlip,
+             transforms.ToTensor, transforms.Normalize],
+        )
+        self.assertEqual(tuple(train.transforms[0].scale), (0.08, 1.0))
+        self.assertEqual(tuple(train.transforms[0].ratio), (0.75, 4.0 / 3.0))
+        self.assertEqual(
+            [type(item) for item in validation.transforms],
+            [transforms.Resize, transforms.CenterCrop, transforms.ToTensor, transforms.Normalize],
+        )
 
     def test_machine_readable_spec_matches_constants(self):
         spec = json.loads((HERE / "hard_label_v1_protocol.json").read_text(encoding="utf-8"))
