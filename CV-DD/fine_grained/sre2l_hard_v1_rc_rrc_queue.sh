@@ -2,7 +2,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 EXP="${EXP_ROOT:-/linxi/dataset/FG_HardLabel_standard/v1/aircraft_ipc3_sre2l_t42_r42_rc_rrc_v1}"
-IMAGES=/linxi/dataset/FG_SRe2L_standard/v1/arms/tseed42/recovery/A_imsize224/rseed42/ipc3
+SOURCE_IMAGES=/linxi/dataset/FG_SRe2L_standard/v1/arms/tseed42/recovery/A_imsize224/rseed42/ipc3
+IMAGES="$EXP/images/ipc3"
 RECOVERY_MANIFEST=/linxi/dataset/FG_SRe2L_standard/v1/arms/tseed42/recovery/A_imsize224/rseed42/recovery_manifest.json
 TEST=/linxi/dataset/FG_SRe2L_repro/v1/datasets/A_imsize224/test
 WEIGHTS=/linxi/models/torchvision/resnet18-f37072fd.pth
@@ -13,20 +14,32 @@ exec 9>"$EXP/locks/launcher.lock"; flock -n 9 || exit 75
 trap 's=$?; if ((s)); then rm -f "$EXP/status/running"; echo "$(date --iso-8601=seconds) exit=$s" > "$EXP/status/failed"; fi' EXIT
 rm -f "$EXP/status/failed" "$EXP/status/complete"; date --iso-8601=seconds > "$EXP/status/running"
 
-python - "$IMAGES" "$RECOVERY_MANIFEST" "$EXP/audits/input.json" <<'PY'
+python - "$SOURCE_IMAGES" "$IMAGES" "$RECOVERY_MANIFEST" "$EXP/audits/input.json" <<'PY'
 import hashlib,json,os,sys
 from pathlib import Path
-images,manifest,out=map(Path,sys.argv[1:])
+source,images,manifest,out=map(Path,sys.argv[1:])
 x=json.loads(manifest.read_text())
 assert x['status']=='complete' and x['dataset']['name']=='A_imsize224' and x['recovery_seed']==42 and x['dataset']['recovery_iterations']==4000
-files=sorted(images.glob('*/*.jpg')); assert len(files)==300
-classes=sorted(p for p in images.iterdir() if p.is_dir()); assert len(classes)==100 and all(len(list(p.glob('*.jpg')))==3 for p in classes)
+source_classes=sorted(p for p in source.iterdir() if p.is_dir())
+assert [p.name for p in source_classes]==[f'new{i:03d}' for i in range(100)]
+images.mkdir(parents=True,exist_ok=True)
+for class_id,source_class in enumerate(source_classes):
+ target=images/f'{class_id:03d}'
+ if target.exists() or target.is_symlink():
+  assert target.is_symlink() and target.resolve()==source_class.resolve()
+ else:
+  os.symlink(source_class.resolve(),target,target_is_directory=True)
+files=sorted(source.glob('*/*.jpg')); assert len(files)==300
+classes=sorted(p for p in images.iterdir() if p.is_dir()); assert [p.name for p in classes]==[f'{i:03d}' for i in range(100)]
+assert all(len(list(p.glob('*.jpg')))==3 for p in classes)
 h=hashlib.sha256()
 for path in files:
- h.update(path.relative_to(images).as_posix().encode()); h.update(path.read_bytes())
+ h.update(path.relative_to(source).as_posix().encode()); h.update(path.read_bytes())
 payload={'status':'complete','dataset':'A_imsize224','ipc':3,'teacher_seed':42,'recovery_seed':42,
          'recovery_iterations':4000,'images':300,'classes':100,'image_tree_sha256':h.hexdigest(),
-         'image_root':str(images.resolve()),'recovery_manifest':str(manifest.resolve())}
+         'source_image_root':str(source.resolve()),'normalized_image_root':str(images.resolve()),
+         'class_mapping':'000..099 directory symlinks to new000..new099; pixels unchanged',
+         'recovery_manifest':str(manifest.resolve())}
 out.parent.mkdir(parents=True,exist_ok=True); tmp=out.with_suffix('.json.tmp');tmp.write_text(json.dumps(payload,indent=2)+'\n');os.replace(tmp,out)
 print(json.dumps(payload,indent=2))
 PY
