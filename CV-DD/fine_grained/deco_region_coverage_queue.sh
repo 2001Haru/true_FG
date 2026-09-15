@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-EXP="${EXP_ROOT:-/linxi/dataset/FGDD_DeCO_style/aircraft_ipc3_region_coverage_seed0_v2}"
+EXP="${EXP_ROOT:-/linxi/dataset/FGDD_DeCO_style/aircraft_ipc3_region_coverage_seed0_v3}"
 BASE=/linxi/dataset/FGDD_DeCO_style/aircraft_ipc3_seed0_v1/construction/construction_manifest.json
 TRANS=/linxi/dataset/FG_ViT_Teachers/aircraft_seed42_224_v1
 DINO=/linxi/models/DINOv2/dinov2-base
@@ -23,7 +23,7 @@ if [[ ! -f "$EXP/construction/construction_manifest.json" ]]; then
  python -u "$ROOT/CV-DD/fine_grained/prepare_deco_region_coverage_aircraft.py" \
   --base-manifest "$BASE" --transfg-source "$ROOT/third_party/teacher_backbones/TransFG" \
   --transfg-checkpoint "$TRANS/teachers/transfg/final_step10000.pth" --dino-model-root "$DINO" \
-  --output-root "$EXP/construction" --selection-seed 20260915 --dino-device cuda:1 > "$EXP/logs/construction.log" 2>&1
+  --output-root "$EXP/construction" --selection-seed 20260915 --dino-device cuda:0 --dino-batch-size 8 > "$EXP/logs/construction.log" 2>&1
 fi
 python - "$EXP/construction/construction_manifest.json" "$BASE" <<'PY'
 import hashlib,json,sys

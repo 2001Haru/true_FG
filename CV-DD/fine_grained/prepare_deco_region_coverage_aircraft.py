@@ -135,6 +135,7 @@ def main():
     p.add_argument("--candidates-per-source", default=4, type=int)
     p.add_argument("--candidate-max-iou", default=0.25, type=float)
     p.add_argument("--batch-size", default=24, type=int)
+    p.add_argument("--dino-batch-size", default=8, type=int)
     p.add_argument("--dino-device", default="cuda:1")
     args = p.parse_args()
     base = json.loads(args.base_manifest.read_text())
@@ -214,8 +215,8 @@ def main():
             candidate_index.append((row_index, local_index))
     features = []
     with torch.inference_mode():
-        for offset in range(0, len(tiles), args.batch_size * 2):
-            batch = torch.stack(tiles[offset:offset + args.batch_size * 2]).to(dino_device)
+        for offset in range(0, len(tiles), args.dino_batch_size):
+            batch = torch.stack(tiles[offset:offset + args.dino_batch_size]).to(dino_device)
             with torch.autocast(dino_device.type, dtype=torch.float16, enabled=dino_device.type == "cuda"):
                 encoded = model(pixel_values=batch).last_hidden_state[:, 0]
             features.append(F.normalize(encoded.float(), dim=1).cpu())
@@ -314,6 +315,7 @@ def main():
         "recomputed_argmax_matches_base_fraction": sum(row["recomputed_argmax_matches_base"] for row in rows) / len(rows),
         "dino_geometry": "stored 112x112 RGB tile; bicubic Resize256; CenterCrop224; DINOv2-base CLS; L2 normalization; cosine",
         "dino_device": str(dino_device),
+        "dino_batch_size": args.dino_batch_size,
         "coverage_rule": "classwise greedy facility-location over all 48 candidate tiles, followed by deterministic one-source swaps to convergence; maximize mean max cosine similarity with one candidate per source",
         "random_rule": "one uniform stable-SHA256 candidate index per source from the identical candidate pool",
         "selection_seed": args.selection_seed, "base_manifest": str(args.base_manifest.resolve()),
