@@ -67,8 +67,6 @@ def pick_attention_candidates(scores, side, window, count, max_iou, fixed_first)
             selected.append(box)
             if len(selected) == count:
                 break
-    if len(selected) != count:
-        raise RuntimeError(f"attention candidate selection returned {len(selected)} windows, expected {count}")
     return selected
 
 
@@ -210,16 +208,19 @@ def main():
         class_rows = [row for row in rows if row["class"] == class_name]
         if len(class_rows) != 12:
             raise RuntimeError(f"{class_name} has {len(class_rows)} sources")
-        class_indices, source_ids = [], []
+        class_indices, source_ids, local_indices, source_flats = [], [], [], {}
         for local_source, row in enumerate(class_rows):
-            for candidate in row["candidates"]:
+            source_flats[local_source] = []
+            for local_candidate, candidate in enumerate(row["candidates"]):
+                source_flats[local_source].append(len(class_indices))
                 class_indices.append(candidate["feature_index"])
                 source_ids.append(local_source)
+                local_indices.append(local_candidate)
             random_local = int.from_bytes(stable_digest("region-candidate-random-v1", args.selection_seed, class_name, row["image_id"])[:8], "little") % len(row["candidates"])
             choices["candidate_random"][row["source_index"]] = random_local
         class_features = features[class_indices]
-        current_flat = [source * len(row["candidates"]) for source, row in enumerate(class_rows)]
-        random_flat = [source * len(row["candidates"]) + choices["candidate_random"][row["source_index"]] for source, row in enumerate(class_rows)]
+        current_flat = [source_flats[source][0] for source in range(len(class_rows))]
+        random_flat = [source_flats[source][choices["candidate_random"][row["source_index"]]] for source, row in enumerate(class_rows)]
         greedy_flat = joint_facility_selection(class_features, source_ids)
         selected_flat = max((current_flat, random_flat, greedy_flat), key=lambda selected: facility_utility(class_features, selected))
         selected_flat = refine_facility_selection(class_features, selected_flat, source_ids)
@@ -227,7 +228,7 @@ def main():
             raise RuntimeError("joint coverage did not choose exactly one candidate per source")
         for flat in selected_flat:
             row = class_rows[source_ids[flat]]
-            choices["joint_coverage"][row["source_index"]] = flat % len(row["candidates"])
+            choices["joint_coverage"][row["source_index"]] = local_indices[flat]
         class_audits.append({
             "class": class_name,
             "candidate_count": len(class_indices),
@@ -280,6 +281,12 @@ def main():
         "independent_sources_per_class": 12, "window_size_reference224": args.window,
         "window_area_ratio": args.window ** 2 / 224 ** 2, "tile_size": 112,
         "candidates_per_source": args.candidates_per_source, "candidate_max_iou": args.candidate_max_iou,
+        "actual_candidates_per_source_min": min(len(row["candidates"]) for row in rows),
+        "actual_candidates_per_source_max": max(len(row["candidates"]) for row in rows),
+        "actual_candidate_count_histogram": {
+            str(count): sum(len(row["candidates"]) == count for row in rows)
+            for count in range(1, args.candidates_per_source + 1)
+        },
         "candidate_rule": "top TransFG attention-mean windows with deterministic NMS; candidate0 exactly reproduces current FG-region",
         "recomputed_argmax_matches_base_fraction": sum(row["recomputed_argmax_matches_base"] for row in rows) / len(rows),
         "dino_geometry": "stored 112x112 RGB tile; bicubic Resize256; CenterCrop224; DINOv2-base CLS; L2 normalization; cosine",

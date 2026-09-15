@@ -36,7 +36,7 @@ assert len(x['regions_detail'])==len(b['regions_detail'])==1200
 for new,old in zip(x['regions_detail'],b['regions_detail']):
  assert (new['class'],new['mosaic'],new['tile'],new['image_id'],new['raw_path'])==(old['class'],old['mosaic'],old['tile'],old['image_id'],old['raw_path'])
  assert new['candidates'][0]['window224']==old['fg_window224']
- assert len(new['candidates'])==4 and len({tuple(c['window224']) for c in new['candidates']})==4
+ assert 1<=len(new['candidates'])<=4 and len({tuple(c['window224']) for c in new['candidates']})==len(new['candidates'])
 for row in x['class_audits']:
  assert row['joint_coverage_utility']+1e-8>=row['current_fg_utility']
  assert row['joint_coverage_utility']+1e-8>=row['candidate_random_utility']
