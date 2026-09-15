@@ -38,7 +38,7 @@ def main():
     parser.add_argument("--selection-manifest",required=True,type=Path)
     parser.add_argument("--teacher-dir",required=True,type=Path)
     parser.add_argument("--fkd-dir",required=True,type=Path)
-    parser.add_argument("--ipc",required=True,type=int,choices=(1,3,5))
+    parser.add_argument("--ipc",required=True,type=int,choices=(1,3,5,10,20))
     parser.add_argument("--selection-seed",required=True,type=int,choices=(0,1,2))
     parser.add_argument("--student-seed",required=True,type=int,choices=(42,43,44))
     args=parser.parse_args(); result=load(args.result); manifest=load(args.selection_manifest)

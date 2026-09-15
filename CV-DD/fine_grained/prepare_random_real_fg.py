@@ -110,7 +110,10 @@ def main() -> None:
         "selection_seed": args.selection_seed,
         "selection_algorithm": "SHA256(seed + NUL + source_relative_path), ascending",
         "materialization": args.link_mode,
-        "nested_ipc_property": "IPC1 subset IPC3 subset IPC5 for the same seed",
+        "nested_ipc_property": (
+            "selection is the first IPC entries of one full-class stable-SHA256 ordering; "
+            "therefore every smaller IPC is a strict prefix/subset for the same seed"
+        ),
         "source_root": str(source_root),
         "selected_root": str(args.output_dir.resolve()),
         "selected_images": len(records),
