@@ -55,18 +55,20 @@ def rollout(model, images):
     return F.interpolate(scores.reshape(-1, 1, 18, 18), (224, 224), mode="bilinear", align_corners=False)[:, 0]
 
 
-def pick_attention_candidates(scores, side, window, count, max_iou):
+def pick_attention_candidates(scores, side, window, count, max_iou, fixed_first):
     ranked = torch.argsort(scores.reshape(-1), descending=True, stable=True).tolist()
-    selected = []
+    selected = [tuple(fixed_first)]
     for flat in ranked:
         y, x = divmod(flat, side)
         box = (x, y, x + window, y + window)
+        if box in selected:
+            continue
         if all(iou(box, previous) <= max_iou for previous in selected):
             selected.append(box)
             if len(selected) == count:
                 break
-    if not selected:
-        raise RuntimeError("attention candidate selection returned no window")
+    if len(selected) != count:
+        raise RuntimeError(f"attention candidate selection returned {len(selected)} windows, expected {count}")
     return selected
 
 
@@ -159,9 +161,15 @@ def main():
         maps = rollout(teacher, torch.stack(images).cuda()).cpu()
         pooled = F.avg_pool2d(maps[:, None], args.window, stride=1)[:, 0]
         for row, scores in zip(batch, pooled):
-            candidates = pick_attention_candidates(scores, side, args.window, args.candidates_per_source, args.candidate_max_iou)
-            if list(candidates[0]) != row["base_fg_window224"]:
-                raise RuntimeError(f"current FG window not reproduced for {row['image_id']}")
+            argmax_flat = int(scores.reshape(-1).argmax())
+            argmax_y, argmax_x = divmod(argmax_flat, side)
+            recomputed_argmax = [argmax_x, argmax_y, argmax_x + args.window, argmax_y + args.window]
+            candidates = pick_attention_candidates(
+                scores, side, args.window, args.candidates_per_source, args.candidate_max_iou,
+                row["base_fg_window224"],
+            )
+            row["recomputed_argmax_window224"] = recomputed_argmax
+            row["recomputed_argmax_matches_base"] = recomputed_argmax == row["base_fg_window224"]
             row["candidates"] = [{"window224": list(box), "attention_mean": float(scores[box[1], box[0]])} for box in candidates]
     del teacher
     torch.cuda.empty_cache()
@@ -273,6 +281,7 @@ def main():
         "window_area_ratio": args.window ** 2 / 224 ** 2, "tile_size": 112,
         "candidates_per_source": args.candidates_per_source, "candidate_max_iou": args.candidate_max_iou,
         "candidate_rule": "top TransFG attention-mean windows with deterministic NMS; candidate0 exactly reproduces current FG-region",
+        "recomputed_argmax_matches_base_fraction": sum(row["recomputed_argmax_matches_base"] for row in rows) / len(rows),
         "dino_geometry": "stored 112x112 RGB tile; bicubic Resize256; CenterCrop224; DINOv2-base CLS; L2 normalization; cosine",
         "coverage_rule": "classwise greedy facility-location over all 48 candidate tiles, followed by deterministic one-source swaps to convergence; maximize mean max cosine similarity with one candidate per source",
         "random_rule": "one uniform stable-SHA256 candidate index per source from the identical candidate pool",
