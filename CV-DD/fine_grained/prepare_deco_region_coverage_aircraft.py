@@ -135,6 +135,7 @@ def main():
     p.add_argument("--candidates-per-source", default=4, type=int)
     p.add_argument("--candidate-max-iou", default=0.25, type=float)
     p.add_argument("--batch-size", default=24, type=int)
+    p.add_argument("--dino-device", default="cuda:1")
     args = p.parse_args()
     base = json.loads(args.base_manifest.read_text())
     if base.get("status") != "complete" or base.get("regions") != 1200 or base.get("window_size_reference224") != args.window:
@@ -177,7 +178,8 @@ def main():
     except ImportError as error:
         raise RuntimeError("transformers is required for DINOv2 region encoding") from error
     processor = AutoImageProcessor.from_pretrained(str(args.dino_model_root), local_files_only=True)
-    model = AutoModel.from_pretrained(str(args.dino_model_root), local_files_only=True).cuda().eval()
+    dino_device = torch.device(args.dino_device)
+    model = AutoModel.from_pretrained(str(args.dino_model_root), local_files_only=True).to(dino_device).eval()
     transform = transforms.Compose([
         transforms.Resize(256, interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(224),
         transforms.ToTensor(), transforms.Normalize(processor.image_mean, processor.image_std),
@@ -192,8 +194,8 @@ def main():
     features = []
     with torch.inference_mode():
         for offset in range(0, len(tiles), args.batch_size * 2):
-            batch = torch.stack(tiles[offset:offset + args.batch_size * 2]).cuda()
-            with torch.autocast("cuda", dtype=torch.float16):
+            batch = torch.stack(tiles[offset:offset + args.batch_size * 2]).to(dino_device)
+            with torch.autocast(dino_device.type, dtype=torch.float16, enabled=dino_device.type == "cuda"):
                 encoded = model(pixel_values=batch).last_hidden_state[:, 0]
             features.append(F.normalize(encoded.float(), dim=1).cpu())
     features = torch.cat(features)
@@ -290,6 +292,7 @@ def main():
         "candidate_rule": "top TransFG attention-mean windows with deterministic NMS; candidate0 exactly reproduces current FG-region",
         "recomputed_argmax_matches_base_fraction": sum(row["recomputed_argmax_matches_base"] for row in rows) / len(rows),
         "dino_geometry": "stored 112x112 RGB tile; bicubic Resize256; CenterCrop224; DINOv2-base CLS; L2 normalization; cosine",
+        "dino_device": str(dino_device),
         "coverage_rule": "classwise greedy facility-location over all 48 candidate tiles, followed by deterministic one-source swaps to convergence; maximize mean max cosine similarity with one candidate per source",
         "random_rule": "one uniform stable-SHA256 candidate index per source from the identical candidate pool",
         "selection_seed": args.selection_seed, "base_manifest": str(args.base_manifest.resolve()),

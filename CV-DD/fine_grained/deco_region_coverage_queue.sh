@@ -20,10 +20,10 @@ trap 's=$?; if ((s)); then rm -f "$EXP/status/running"; echo "$(date --iso-8601=
 rm -f "$EXP/status/failed" "$EXP/status/complete"; date --iso-8601=seconds > "$EXP/status/running"
 
 if [[ ! -f "$EXP/construction/construction_manifest.json" ]]; then
- CUDA_VISIBLE_DEVICES=0 python -u "$ROOT/CV-DD/fine_grained/prepare_deco_region_coverage_aircraft.py" \
+ python -u "$ROOT/CV-DD/fine_grained/prepare_deco_region_coverage_aircraft.py" \
   --base-manifest "$BASE" --transfg-source "$ROOT/third_party/teacher_backbones/TransFG" \
   --transfg-checkpoint "$TRANS/teachers/transfg/final_step10000.pth" --dino-model-root "$DINO" \
-  --output-root "$EXP/construction" --selection-seed 20260915 > "$EXP/logs/construction.log" 2>&1
+  --output-root "$EXP/construction" --selection-seed 20260915 --dino-device cuda:1 > "$EXP/logs/construction.log" 2>&1
 fi
 python - "$EXP/construction/construction_manifest.json" "$BASE" <<'PY'
 import hashlib,json,sys
