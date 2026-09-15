@@ -54,7 +54,11 @@ relabel(){
    --min-scale-crops 1 --max-scale-crops 1 --mix-type cutmix --use-fp16 --mode fkd_save \
    > "$EXP/logs/relabel_ipc${ipc}_rseed${rseed}.log" 2>&1
  fi
- audit="$EXP/audits/fkd_ipc${ipc}_rseed${rseed}.json"
+ audit="$actual/fkd_audit.json"
+ central_audit="$EXP/audits/fkd_ipc${ipc}_rseed${rseed}.json"
+ if [[ ! -f "$audit" && -f "$central_audit" ]] && python -c "import json; assert json.load(open('$central_audit'))['status']=='complete'"; then
+  cp "$central_audit" "$audit"
+ fi
  if [[ ! -f "$audit" ]] || ! python -c "import json; assert json.load(open('$audit'))['status']=='complete'"; then
   python "$ROOT/CV-DD/fine_grained/audit_fkd.py" --fkd-dir "$actual" --images $((100*ipc)) --classes 100 \
    --batch-size 20 --epochs 400 --output "$audit" >> "$EXP/logs/relabel_ipc${ipc}_rseed${rseed}.log" 2>&1
