@@ -43,6 +43,23 @@ class NRRPixelOptimizationTests(unittest.TestCase):
         self.assertTrue(torch.equal(first, second))
         self.assertFalse(torch.equal(first, other_update))
 
+    def test_random_mask_shift_is_nonzero_and_reproducible(self):
+        first = MODULE.stable_nonzero_shift(42, 7, "example.jpg")
+        second = MODULE.stable_nonzero_shift(42, 7, "example.jpg")
+        self.assertEqual(first, second)
+        self.assertNotEqual(first[:2], (0, 0))
+
+    def test_cumulative_audit_separates_linf_and_rgb_boundaries(self):
+        initial = torch.full((1, 3, 2, 2), 0.5)
+        images = initial.clone()
+        images[:, :, 0, 0] += 32 / 255
+        images[:, :, 0, 1] = 1.0
+        protected = torch.zeros(1, 2, 2, dtype=torch.bool)
+        result = MODULE.cumulative_pixel_stats(images, initial, protected, 32 / 255)
+        self.assertGreater(result["linf_bound_fraction_editable"], 0)
+        self.assertGreater(result["rgb_boundary_fraction_editable"], 0)
+        self.assertNotEqual(result["linf_bound_fraction_editable"], result["rgb_boundary_fraction_editable"])
+
     def test_bn_hook_uses_input_population_variance(self):
         bn = nn.BatchNorm2d(2)
         bn.running_mean.copy_(torch.tensor([0.5, -0.5]))

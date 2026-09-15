@@ -27,7 +27,7 @@ x=json.load(open(sys.argv[1]));p=json.load(open(sys.argv[2]))
 assert x['status']=='complete' and x['images']==300 and x['classes']==100 and x['ipc']==3
 assert x['protected_pixels_per_image']==15053 and abs(x['protected_fraction']-15053/50176)<1e-15
 assert x['teacher_sha256']=='9a5759935df2b3e6db3c7555d8cc8efc4bb5b8a4b85b6fed2fac810387c06fe7'
-assert p['status']=='frozen_pending_user_confirmation'
+assert p['status']=='frozen'
 print('initialization and mask gate passed')
 PY
 

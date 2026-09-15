@@ -28,6 +28,16 @@ def stable_u64(*values):
     return int.from_bytes(hashlib.sha256("\0".join(map(str, values)).encode()).digest()[:8], "little")
 
 
+def stable_nonzero_shift(seed, class_id, identity, size=224):
+    counter = 0
+    while True:
+        digest = stable_u64("nrr-random-mask-shift-v1", seed, class_id, identity, counter)
+        dy, dx = digest % size, (digest // size) % size
+        if dy != 0 or dx != 0:
+            return int(dy), int(dx), counter
+        counter += 1
+
+
 def sha256_file(path):
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
@@ -156,17 +166,35 @@ def gradient_stats(tensor):
     }
 
 
-def pixel_stats(images, initial, protected):
-    delta = images.detach() - initial
+def displacement_stats(images, reference, protected):
+    delta = images.detach() - reference
     absolute = delta.abs()
+    editable = (~protected)[:, None].expand_as(absolute)
+    editable_absolute = absolute.masked_select(editable)
     return {
-        "mean_abs": float(absolute.mean()),
-        "rms": float(delta.square().mean().sqrt()),
-        "max_abs": float(absolute.max()),
-        "changed_channel_fraction": float(absolute.gt(0).float().mean()),
-        "linf_bound_fraction": float(absolute.ge(32 / 255 - 1e-7).float().mean()),
+        "mean_abs_all": float(absolute.mean()),
+        "rms_all": float(delta.square().mean().sqrt()),
+        "max_abs_all": float(absolute.max()),
+        "changed_channel_fraction_all": float(absolute.gt(0).float().mean()),
+        "mean_abs_editable": float(editable_absolute.mean()),
+        "rms_editable": float(editable_absolute.square().mean().sqrt()),
+        "max_abs_editable": float(editable_absolute.max()),
         "protected_max_abs": float(absolute.masked_select(protected[:, None].expand_as(absolute)).max()) if protected.any() else 0.0,
     }
+
+
+def cumulative_pixel_stats(images, initial, protected, epsilon):
+    delta = images.detach() - initial
+    absolute = delta.abs()
+    editable = (~protected)[:, None].expand_as(absolute)
+    base = displacement_stats(images, initial, protected)
+    base.update({
+        "linf_bound_fraction_editable": float(absolute.masked_select(editable).ge(epsilon - 1e-7).float().mean()),
+        "rgb_boundary_fraction_editable": float(
+            (images.detach().masked_select(editable).le(1e-7) | images.detach().masked_select(editable).ge(1 - 1e-7)).float().mean()
+        ),
+    })
+    return base
 
 
 def read_protocol(path):
@@ -206,10 +234,9 @@ def prepare(args):
         correct += int(logits.argmax(1).eq(labels).sum())
         for row, cam in zip(slot_rows, cams):
             cam_mask = topk_mask(cam, PROTECTED_PIXELS)
-            digest = stable_u64("nrr-random-mask-shift-v1", args.seed, row["class_id"], Path(row["selected_path"]).name)
-            dy, dx = digest % 224, (digest // 224) % 224
-            if dy == 0 and dx == 0:
-                dx = 1
+            dy, dx, redraw_counter = stable_nonzero_shift(
+                args.seed, row["class_id"], Path(row["selected_path"]).name
+            )
             random_mask = torch.roll(cam_mask, shifts=(int(dy), int(dx)), dims=(0, 1))
             name = Path(row["selected_path"]).stem + ".png"
             cam_path = args.output_root / "masks/cam" / row["class_folder"] / name
@@ -224,7 +251,8 @@ def prepare(args):
                 "identity": Path(row["selected_path"]).name, "selected_path": str(Path(row["selected_path"]).resolve()),
                 "source_path": str(Path(row["source_path"]).resolve()), "source_sha256": row["source_sha256"],
                 "cam_mask": str(cam_path.resolve()), "random_mask": str(random_path.resolve()),
-                "random_shift_yx": [int(dy), int(dx)], "mask_overlap_fraction": overlap,
+                "random_shift_yx": [dy, dx], "random_shift_redraw_counter": redraw_counter,
+                "mask_overlap_fraction": overlap,
                 "cam_min": float(cam.min()), "cam_max": float(cam.max()),
             })
     handle.remove()
@@ -305,14 +333,18 @@ def optimize(args):
             loss = ce + bn_weighted
             diagnostic = update in (1, 100, 500, 1000, args.updates)
             if diagnostic:
+                previous_images = images.detach().clone()
                 ce_gradient = torch.autograd.grad(ce, images, retain_graph=True)[0]
                 bn_gradient = torch.autograd.grad(bn_weighted, images, retain_graph=True)[0]
                 denominator = torch.linalg.vector_norm(ce_gradient) * torch.linalg.vector_norm(bn_gradient)
                 cosine = float((ce_gradient * bn_gradient).sum() / denominator) if float(denominator) > 0 else 0.0
+                if images.grad is not None:
+                    raise RuntimeError("component gradient audit unexpectedly populated parameter .grad")
             loss.backward()
             if protected.any():
                 images.grad.masked_fill_(protected[:, None], 0)
-            total_gradient = gradient_stats(images.grad)
+            if diagnostic:
+                total_gradient = gradient_stats(images.grad)
             optimizer.step()
             with torch.no_grad():
                 images.copy_(project_pixels(images, initial, protected, args.epsilon))
@@ -323,7 +355,8 @@ def optimize(args):
                     "ce_pixel_gradient": gradient_stats(ce_gradient),
                     "weighted_bn_pixel_gradient": gradient_stats(bn_gradient),
                     "ce_bn_gradient_cosine": cosine, "effective_total_gradient": total_gradient,
-                    "pixel_change": pixel_stats(images, initial, protected),
+                    "single_step_displacement": displacement_stats(images, previous_images, protected),
+                    "cumulative_displacement": cumulative_pixel_stats(images, initial, protected, args.epsilon),
                     "flipped_images": int(flags.sum()),
                 })
             if update in SNAPSHOTS[1:]:
@@ -335,6 +368,9 @@ def optimize(args):
             save_rgb(tensor, path)
             decoded = load_rgb(path).to(device)
             delta = (decoded - original).abs()
+            editable = (~mask)[None].expand_as(delta)
+            editable_delta = delta.masked_select(editable)
+            editable_pixels = decoded.masked_select(editable)
             if float(delta.max()) > args.epsilon + 0.5 / 255 + 1e-7:
                 raise RuntimeError("quantized export exceeds pixel constraint")
             if mask.any() and float(delta.masked_select(mask[None].expand_as(delta)).max()) != 0:
@@ -343,7 +379,11 @@ def optimize(args):
                 "class_id": row["class_id"], "class_folder": row["class_folder"], "slot": slot,
                 "identity": row["identity"], "path": str(path.resolve()), "sha256": sha256_file(path),
                 "mean_abs_change": float(delta.mean()), "rms_change": float(delta.square().mean().sqrt()),
-                "max_abs_change": float(delta.max()), "bound_hit_fraction": float(delta.ge(32 / 255 - 1e-7).float().mean()),
+                "max_abs_change": float(delta.max()),
+                "bound_hit_fraction_editable": float(editable_delta.ge(args.epsilon - 1e-7).float().mean()),
+                "rgb_boundary_fraction_editable": float(
+                    (editable_pixels.eq(0) | editable_pixels.eq(1)).float().mean()
+                ),
                 "protected_max_abs": float(delta.masked_select(mask[None].expand_as(delta)).max()) if mask.any() else 0.0,
             })
         slot_result = {
@@ -383,12 +423,14 @@ def finalize(args):
                 raise RuntimeError(f"export collision: {row['path']}")
         changes = [row["mean_abs_change"] for row in payload["exports"]]
         rms = [row["rms_change"] for row in payload["exports"]]
-        hits = [row["bound_hit_fraction"] for row in payload["exports"]]
+        hits = [row["bound_hit_fraction_editable"] for row in payload["exports"]]
+        boundaries = [row["rgb_boundary_fraction_editable"] for row in payload["exports"]]
         protected = [row["protected_max_abs"] for row in payload["exports"]]
         summaries[arm] = {
             "mean_image_mean_abs_change": sum(changes) / len(changes),
             "mean_image_rms_change": sum(rms) / len(rms),
-            "mean_bound_hit_fraction": sum(hits) / len(hits),
+            "mean_bound_hit_fraction_editable": sum(hits) / len(hits),
+            "mean_rgb_boundary_fraction_editable": sum(boundaries) / len(boundaries),
             "protected_max_abs": max(protected),
         }
         arms[arm] = {"manifest": str(path.resolve()), "manifest_sha256": sha256_file(path),

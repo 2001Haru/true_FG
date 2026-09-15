@@ -1,5 +1,5 @@
 {
-  "status": "frozen_pending_user_confirmation",
+  "status": "frozen",
   "protocol": "aircraft_ipc3_nrr_inspired_pixel_optimization_v1",
   "dataset": "A_imsize224",
   "classes": 100,
@@ -16,9 +16,12 @@
     "normalization_std": [0.2124, 0.2051, 0.2375]
   },
   "objective": {
+    "teacher_input_from_pixel_variable": "normalize RGB [0,1] using Aircraft Teacher mean/std immediately before Teacher forward",
+    "pixel_projection_and_gradient_audit_coordinates": "unnormalized RGB [0,1]",
     "classification": "mean ground-truth cross entropy over the actual 100-image construction batch",
-    "bn": "sum over BatchNorm2d input statistics of w_l*(L2(batch_mean-running_mean)+L2(batch_variance-running_variance))",
+    "bn": "sum over BatchNorm2d input statistics of w_l*(non-squared channel-vector L2(batch_mean-running_mean)+non-squared channel-vector L2(batch_variance-running_variance))",
     "bn_variance_correction": 0,
+    "bn_channel_average": false,
     "first_bn_weight": 10,
     "other_bn_weight": 1,
     "bn_coefficient": 0.01,
@@ -37,22 +40,26 @@
     "construction_batch": 100,
     "batches": "one rank slot at a time; one image per class; three independent Adam states",
     "augmentation": "independent per-image HorizontalFlip(p=0.5), paired across arms",
+    "protection_gradient_coordinates": "the flip backward maps gradients to original image coordinates; apply the original unflipped mask exactly once to the RGB parameter gradient",
     "disabled_augmentations": ["RRC", "CutMix", "jitter"],
     "linf_epsilon_rgb": 0.12549019607843137,
     "lr_formula": "lr(t)=lr_min+(lr_0-lr_min)*(1+cos(pi*t/(U-1)))/2 for zero-based actual update t",
     "snapshot_updates": [0, 100, 500, 1000, 2000],
-    "export": "lossless RGB PNG quantized by round(255*x)"
+    "export": "lossless RGB PNG quantized by round(255*x)",
+    "gradient_component_audit": "CE and weighted-BN gradients from one forward and identical flips via autograd.grad; these calls do not populate .grad; exactly one total-loss backward supplies the optimizer gradient",
+    "pixel_change_audit": "at audit updates record post-projection single-step displacement and cumulative displacement from R0; separately record editable-coordinate L-infinity-bound hits and RGB 0/1 boundary hits"
   },
   "arms": {
     "plain": "all pixels updateable",
     "cam_protected": "top 15053 initial CAM pixels restored exactly after every update",
-    "random_protected": "same CAM mask circularly shifted by a stable per-image 2D offset"
+    "random_protected": "same CAM mask circularly shifted by a stable per-image 2D offset; stable-hash redraw with a counter until nonzero"
   },
   "cam": {
     "definition": "ReLU(sum_k fc_weight[y,k]*layer4_feature[k]) on the initial unflipped R0 image, bilinear upsampled from 7x7 to 224x224",
     "protected_pixels": 15053,
     "protected_fraction": 0.30000398596938777,
-    "frozen_after_initialization": true
+    "frozen_after_initialization": true,
+    "random_control_note": "circular shift preserves mask area exactly but wraparound may split connected components in planar coordinates; shifts are not selected by overlap"
   },
   "downstream": {
     "fkd": "standard-v2 fullframe+flip+CutMix metadata replay; ResNet Teacher42 train-mode BSSL relabeling of exported pixels",
