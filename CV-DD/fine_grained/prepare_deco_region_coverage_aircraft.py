@@ -140,38 +140,59 @@ def main():
     base = json.loads(args.base_manifest.read_text())
     if base.get("status") != "complete" or base.get("regions") != 1200 or base.get("window_size_reference224") != args.window:
         raise RuntimeError("base manifest is not the expected completed DeCO seed0 construction")
-    rows = []
-    for source_index, old in enumerate(base["regions_detail"]):
-        row = {key: old[key] for key in ("class_id", "class", "mosaic", "tile", "image_id", "raw_path", "is_r0_source")}
-        row["source_index"] = source_index
-        row["base_fg_window224"] = old["fg_window224"]
-        rows.append(row)
-
-    teacher, architecture = build_teacher("transfg", args.transfg_source, weights_path=None, checkpoint_path=args.transfg_checkpoint)
-    teacher.cuda().eval()
-    side = 224 - args.window + 1
-    for offset in range(0, len(rows), args.batch_size):
-        batch = rows[offset:offset + args.batch_size]
-        images = []
-        for row in batch:
-            with Image.open(row["raw_path"]) as handle:
-                reference = handle.convert("RGB").resize((224, 224), Image.Resampling.BILINEAR)
-            images.append(TF.normalize(TF.pil_to_tensor(reference).float().div_(255), IMAGENET_MEAN, IMAGENET_STD))
-        maps = rollout(teacher, torch.stack(images).cuda()).cpu()
-        pooled = F.avg_pool2d(maps[:, None], args.window, stride=1)[:, 0]
-        for row, scores in zip(batch, pooled):
-            argmax_flat = int(scores.reshape(-1).argmax())
-            argmax_y, argmax_x = divmod(argmax_flat, side)
-            recomputed_argmax = [argmax_x, argmax_y, argmax_x + args.window, argmax_y + args.window]
-            candidates = pick_attention_candidates(
-                scores, side, args.window, args.candidates_per_source, args.candidate_max_iou,
-                row["base_fg_window224"],
-            )
-            row["recomputed_argmax_window224"] = recomputed_argmax
-            row["recomputed_argmax_matches_base"] = recomputed_argmax == row["base_fg_window224"]
-            row["candidates"] = [{"window224": list(box), "attention_mean": float(scores[box[1], box[0]])} for box in candidates]
-    del teacher
-    torch.cuda.empty_cache()
+    candidate_cache_path = args.output_root / "candidate_cache.json"
+    base_sha256 = sha256_file(args.base_manifest)
+    checkpoint_sha256 = sha256_file(args.transfg_checkpoint)
+    architecture = None
+    if candidate_cache_path.is_file():
+        cache = json.loads(candidate_cache_path.read_text())
+        expected = (base_sha256, checkpoint_sha256, args.window, args.candidates_per_source, args.candidate_max_iou)
+        actual = (cache.get("base_manifest_sha256"), cache.get("transfg_checkpoint_sha256"), cache.get("window"),
+                  cache.get("candidates_per_source"), cache.get("candidate_max_iou"))
+        if cache.get("status") != "complete" or actual != expected:
+            raise RuntimeError("stale or incompatible attention candidate cache")
+        rows = cache["rows"]
+        architecture = cache["architecture"]
+        print(f"reusing candidate cache: {candidate_cache_path}", flush=True)
+    else:
+        rows = []
+        for source_index, old in enumerate(base["regions_detail"]):
+            row = {key: old[key] for key in ("class_id", "class", "mosaic", "tile", "image_id", "raw_path", "is_r0_source")}
+            row["source_index"] = source_index
+            row["base_fg_window224"] = old["fg_window224"]
+            rows.append(row)
+        teacher, architecture = build_teacher("transfg", args.transfg_source, weights_path=None, checkpoint_path=args.transfg_checkpoint)
+        teacher.cuda().eval()
+        side = 224 - args.window + 1
+        for offset in range(0, len(rows), args.batch_size):
+            batch = rows[offset:offset + args.batch_size]
+            images = []
+            for row in batch:
+                with Image.open(row["raw_path"]) as handle:
+                    reference = handle.convert("RGB").resize((224, 224), Image.Resampling.BILINEAR)
+                images.append(TF.normalize(TF.pil_to_tensor(reference).float().div_(255), IMAGENET_MEAN, IMAGENET_STD))
+            maps = rollout(teacher, torch.stack(images).cuda()).cpu()
+            pooled = F.avg_pool2d(maps[:, None], args.window, stride=1)[:, 0]
+            for row, scores in zip(batch, pooled):
+                argmax_flat = int(scores.reshape(-1).argmax())
+                argmax_y, argmax_x = divmod(argmax_flat, side)
+                recomputed_argmax = [argmax_x, argmax_y, argmax_x + args.window, argmax_y + args.window]
+                candidates = pick_attention_candidates(
+                    scores, side, args.window, args.candidates_per_source, args.candidate_max_iou,
+                    row["base_fg_window224"],
+                )
+                row["recomputed_argmax_window224"] = recomputed_argmax
+                row["recomputed_argmax_matches_base"] = recomputed_argmax == row["base_fg_window224"]
+                row["candidates"] = [{"window224": list(box), "attention_mean": float(scores[box[1], box[0]])} for box in candidates]
+        atomic_json({
+            "status": "complete", "base_manifest_sha256": base_sha256,
+            "transfg_checkpoint_sha256": checkpoint_sha256, "window": args.window,
+            "candidates_per_source": args.candidates_per_source, "candidate_max_iou": args.candidate_max_iou,
+            "architecture": architecture, "rows": rows,
+        }, candidate_cache_path)
+        print(f"wrote candidate cache: {candidate_cache_path}", flush=True)
+        del teacher
+        torch.cuda.empty_cache()
 
     try:
         from transformers import AutoImageProcessor, AutoModel
@@ -296,7 +317,7 @@ def main():
         "coverage_rule": "classwise greedy facility-location over all 48 candidate tiles, followed by deterministic one-source swaps to convergence; maximize mean max cosine similarity with one candidate per source",
         "random_rule": "one uniform stable-SHA256 candidate index per source from the identical candidate pool",
         "selection_seed": args.selection_seed, "base_manifest": str(args.base_manifest.resolve()),
-        "base_manifest_sha256": sha256_file(args.base_manifest), "transfg_checkpoint_sha256": sha256_file(args.transfg_checkpoint),
+        "base_manifest_sha256": base_sha256, "transfg_checkpoint_sha256": checkpoint_sha256,
         "architecture": architecture, "outputs": outputs, "selection_summary": summary,
         "class_audits": class_audits, "regions_detail": rows,
     }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-EXP="${EXP_ROOT:-/linxi/dataset/FGDD_DeCO_style/aircraft_ipc3_region_coverage_seed0_v1}"
+EXP="${EXP_ROOT:-/linxi/dataset/FGDD_DeCO_style/aircraft_ipc3_region_coverage_seed0_v2}"
 BASE=/linxi/dataset/FGDD_DeCO_style/aircraft_ipc3_seed0_v1/construction/construction_manifest.json
 TRANS=/linxi/dataset/FG_ViT_Teachers/aircraft_seed42_224_v1
 DINO=/linxi/models/DINOv2/dinov2-base
