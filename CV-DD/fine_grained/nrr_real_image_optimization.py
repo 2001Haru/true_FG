@@ -143,9 +143,15 @@ def apply_flips(images, flags):
 
 
 def topk_mask(values, count):
-    order = torch.argsort(values.flatten(), descending=True, stable=True)
-    mask = torch.zeros(values.numel(), dtype=torch.bool, device=values.device)
-    mask[order[:count]] = True
+    flat = values.flatten()
+    threshold = torch.topk(flat, count, largest=True, sorted=False).values.min()
+    mask = flat.gt(threshold)
+    remaining = count - int(mask.sum())
+    if remaining:
+        ties = flat.eq(threshold).nonzero(as_tuple=False).flatten()
+        mask[ties[:remaining]] = True
+    if int(mask.sum()) != count:
+        raise RuntimeError("top-k mask area mismatch")
     return mask.view_as(values)
 
 

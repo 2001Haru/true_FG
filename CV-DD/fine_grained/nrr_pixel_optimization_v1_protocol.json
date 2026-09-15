@@ -55,7 +55,7 @@
     "random_protected": "same CAM mask circularly shifted by a stable per-image 2D offset; stable-hash redraw with a counter until nonzero"
   },
   "cam": {
-    "definition": "ReLU(sum_k fc_weight[y,k]*layer4_feature[k]) on the initial unflipped R0 image, bilinear upsampled from 7x7 to 224x224",
+    "definition": "ReLU(sum_k fc_weight[y,k]*layer4_feature[k]) on the initial unflipped R0 image, bilinear upsampled from 7x7 to 224x224; select above the top-k threshold and resolve threshold ties by flattened pixel index",
     "protected_pixels": 15053,
     "protected_fraction": 0.30000398596938777,
     "frozen_after_initialization": true,
