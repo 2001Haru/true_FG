@@ -78,8 +78,9 @@ def main():
     if args.window != 119:
         raise RuntimeError("first protocol requires a 119x119 reference window")
     selection = json.loads(args.selection_manifest.read_text())
-    if selection.get("status") != "complete" or selection.get("ipc") != 3 or selection.get("selection_seed") != 0:
-        raise RuntimeError("expected R0 seed0 IPC3 manifest")
+    if (selection.get("status") != "complete" or selection.get("ipc") != 3
+            or selection.get("selection_seed") not in (0, 1, 2)):
+        raise RuntimeError("expected a completed RandomReal seed0/1/2 IPC3 manifest")
     box_map = boxes(args.boxes)
     r0_by_class = {}
     for row in selection["images"]:
@@ -195,6 +196,7 @@ def main():
         "dataset": "A_imsize224", "ipc": 3, "classes": 100, "stored_images": 300,
         "regions": 1200, "regions_per_class": 12, "independent_sources_per_class": 12,
         "r0_sources_per_class": 3, "additional_sources_per_class": 9,
+        "r0_selection_seed": int(selection["selection_seed"]),
         "selection_seed": args.selection_seed, "window_size_reference224": args.window,
         "window_area_ratio": args.window ** 2 / 224 ** 2, "tile_size": 112,
         "candidate_windows_per_source": side_positions ** 2,
