@@ -1,0 +1,61 @@
+{
+  "status": "frozen_pending_user_confirmation",
+  "protocol": "aircraft_ipc3_nrr_inspired_pixel_optimization_v1",
+  "dataset": "A_imsize224",
+  "classes": 100,
+  "ipc": 3,
+  "source_selection": "RandomReal source seed0",
+  "construction_teacher": {
+    "architecture": "torchvision ResNet18 with 100-class fc",
+    "checkpoint": "/linxi/dataset/FG_SRe2L_standard/v1/teachers/A_imsize224/tseed42/ResNet18.pth",
+    "checkpoint_epoch": 99,
+    "mode": "eval",
+    "parameters_frozen": true,
+    "temperature": 1,
+    "normalization_mean": [0.4865, 0.5177, 0.5425],
+    "normalization_std": [0.2124, 0.2051, 0.2375]
+  },
+  "objective": {
+    "classification": "mean ground-truth cross entropy over the actual 100-image construction batch",
+    "bn": "sum over BatchNorm2d input statistics of w_l*(L2(batch_mean-running_mean)+L2(batch_variance-running_variance))",
+    "bn_variance_correction": 0,
+    "first_bn_weight": 10,
+    "other_bn_weight": 1,
+    "bn_coefficient": 0.01,
+    "layer_or_channel_normalization": false
+  },
+  "pixel_optimization": {
+    "space": "decoded unnormalized RGB float32 [0,1]",
+    "optimizer": "Adam",
+    "initial_lr": 0.01,
+    "minimum_lr": 0.0001,
+    "betas": [0.5, 0.9],
+    "eps": 1e-8,
+    "weight_decay": 0,
+    "warmup": 0,
+    "updates_per_image": 2000,
+    "construction_batch": 100,
+    "batches": "one rank slot at a time; one image per class; three independent Adam states",
+    "augmentation": "independent per-image HorizontalFlip(p=0.5), paired across arms",
+    "disabled_augmentations": ["RRC", "CutMix", "jitter"],
+    "linf_epsilon_rgb": 0.12549019607843137,
+    "lr_formula": "lr(t)=lr_min+(lr_0-lr_min)*(1+cos(pi*t/(U-1)))/2 for zero-based actual update t",
+    "snapshot_updates": [0, 100, 500, 1000, 2000],
+    "export": "lossless RGB PNG quantized by round(255*x)"
+  },
+  "arms": {
+    "plain": "all pixels updateable",
+    "cam_protected": "top 15053 initial CAM pixels restored exactly after every update",
+    "random_protected": "same CAM mask circularly shifted by a stable per-image 2D offset"
+  },
+  "cam": {
+    "definition": "ReLU(sum_k fc_weight[y,k]*layer4_feature[k]) on the initial unflipped R0 image, bilinear upsampled from 7x7 to 224x224",
+    "protected_pixels": 15053,
+    "protected_fraction": 0.30000398596938777,
+    "frozen_after_initialization": true
+  },
+  "downstream": {
+    "fkd": "standard-v2 fullframe+flip+CutMix metadata replay; ResNet Teacher42 train-mode BSSL relabeling of exported pixels",
+    "student": "standard protocol v2 ImageNet-V1 ResNet18, T20 KL without T^2, three student seeds 42/43/44"
+  }
+}
