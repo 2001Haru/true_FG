@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     train_source.add_argument("--train-dir", type=Path)
     train_source.add_argument("--train-manifest", type=Path)
     train_source.add_argument("--paired-source-manifest", type=Path)
-    parser.add_argument("--paired-source-mode", choices=("reference", "compressed"))
+    parser.add_argument("--paired-source-mode", choices=("reference", "compressed", "uniform"))
     parser.add_argument("--val-dir", required=True, type=Path)
     parser.add_argument("--dataset-name", required=True)
     parser.add_argument("--num-classes", required=True, type=int)

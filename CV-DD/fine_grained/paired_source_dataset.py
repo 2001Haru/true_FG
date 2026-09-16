@@ -44,7 +44,7 @@ class PairedSourceIndex:
         payload = json.loads(self.manifest_path.read_text())
         if payload.get("status") != "complete" or payload.get("parents") != 300:
             raise RuntimeError(f"invalid paired source manifest: {manifest_path}")
-        if image_mode not in ("reference", "compressed"):
+        if image_mode not in ("reference", "compressed", "uniform"):
             raise ValueError(image_mode)
         self.image_mode = image_mode
         self.rows = sorted(payload["records"], key=lambda row: row["parent_index"])
@@ -68,6 +68,11 @@ class PairedSourceIndex:
             if image.size != (224, 224):
                 raise RuntimeError(f"reference is not 224: {source['reference_path']}")
             return image
+        if self.image_mode == "uniform":
+            with Image.open(row["uniform_packed_path"]) as handle:
+                packed = handle.convert("RGB")
+            strip = packed.crop((0, source_index * 112, 224, (source_index + 1) * 112))
+            return strip.resize((224, 224), Image.Resampling.LANCZOS)
         with Image.open(row["packed_path"]) as handle:
             packed = handle.convert("RGB")
         if packed.size != (224, 224):

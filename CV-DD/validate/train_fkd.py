@@ -97,7 +97,7 @@ def get_args():
                         help='path to the fkd labels')
     parser.add_argument('--paired-source-manifest', type=str, default=None,
                         help='two-source parent manifest; FKD payload must record parent/subsource')
-    parser.add_argument('--paired-source-mode', choices=('reference', 'compressed'), default=None)
+    parser.add_argument('--paired-source-mode', choices=('reference', 'compressed', 'uniform'), default=None)
     parser.add_argument('--hard-label', action='store_true',
                         help='train directly from ImageFolder class IDs with cross-entropy; do not load FKD labels')
     parser.add_argument('--fkd-hard-label', action='store_true',
