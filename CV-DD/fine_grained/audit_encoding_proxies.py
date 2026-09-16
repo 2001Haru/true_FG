@@ -42,7 +42,7 @@ def main():
    if setting=='single':
     entries=[]
     for row in single['records']:
-     entries.append((row['source_path'],row['outputs'][arm]['decoded'],row['official_bbox224'][1:4:2],row['class']))
+     entries.append((row['source_path'],row['outputs'][arm]['decoded'],row['official_bbox224'][1:4:2],int(row['class'])))
    else:
     idx=PairedSourceIndex(a.six_manifest,six_mode[arm]);entries=[]
     for parent,row in enumerate(idx.rows):
