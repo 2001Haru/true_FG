@@ -28,7 +28,7 @@ python - "$EXP/construction/construction_manifest.json" <<'PY'
 import json,sys
 x=json.load(open(sys.argv[1])); assert x['status']=='complete' and x['images']==300 and x['classes']==100
 assert x['isotropic_pixel_budget']==158**2 and x['strip_pixel_budget']==224*112
-assert abs(x['isotropic_minus_strip_fraction'] + 0.004464285714285714) < 1e-12
+assert abs(x['isotropic_minus_strip_fraction'] - (158**2-224*112)/(224*112)) < 1e-12
 assert set(x['outputs'])=={'isotropic158','vertical112','horizontal112','bbox_retarget112','attention_retarget112'}
 assert all(v['images']==300 for v in x['outputs'].values())
 b=x['bbox_audit']; assert b['subject_density']['max']<=.9000001 and b['background_density']['min']>=.0999999
