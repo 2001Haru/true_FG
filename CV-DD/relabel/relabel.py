@@ -62,6 +62,8 @@ def write_relabel_manifest(args, ipc, status):
         'temperature_role': 'post-eval softmax and optional hierarchy marginalization',
         'min_scale_crops': args.min_scale_crops,
         'max_scale_crops': args.max_scale_crops,
+        'min_aspect_ratio_crops': args.min_aspect_ratio_crops,
+        'max_aspect_ratio_crops': args.max_aspect_ratio_crops,
         'crop_interpolation': 'bilinear',
         'full_image_resize': bool(args.full_image_resize),
         'train_view': ('Resize224(full frame) + HorizontalFlip'
@@ -151,6 +153,10 @@ parser.add_argument("--min-scale-crops", type=float, default=0.08,
                     help="argument in RandomResizedCrop")
 parser.add_argument("--max-scale-crops", type=float, default=1.,
                     help="argument in RandomResizedCrop")
+parser.add_argument("--min-aspect-ratio-crops", type=float, default=3. / 4.,
+                    help="minimum aspect ratio in RandomResizedCrop")
+parser.add_argument("--max-aspect-ratio-crops", type=float, default=4. / 3.,
+                    help="maximum aspect ratio in RandomResizedCrop")
 parser.add_argument('--use-fp16', dest='use_fp16', action='store_true',
                     help='save soft labels as `fp16`')
 parser.add_argument('--mode', default='fkd_save', type=str, metavar='N',)
@@ -382,6 +388,8 @@ def main_worker(gpu, ngpus_per_node, args):
         RandomResizedCropWithCoords(size=args.input_size,
                                     scale=(args.min_scale_crops,
                                            args.max_scale_crops),
+                                    ratio=(args.min_aspect_ratio_crops,
+                                           args.max_aspect_ratio_crops),
                                     interpolation=InterpolationMode.BILINEAR)
     )
     train_dataset = ImageFolder_FKD_MIX(
