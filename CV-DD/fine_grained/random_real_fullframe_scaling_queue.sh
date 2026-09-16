@@ -46,6 +46,18 @@ fkd(){ echo "$EXP/fkd/rseed$2/ipc${1}_bs20_ipc$1"; }
 relabel(){
  local ipc=$1 rseed=$2 gpu=$3 base="$EXP/fkd/rseed$rseed/ipc$ipc" actual expected count=0
  actual="${base}_bs20_ipc${ipc}"; expected=$((400*100*ipc/20))
+ central_audit="$EXP/audits/fkd_ipc${ipc}_rseed${rseed}.json"
+ if [[ -f "$central_audit" && -f "$actual/relabel_manifest.json" ]] && python - "$central_audit" "$actual/relabel_manifest.json" "$actual" "$expected" <<'PY'
+import json,sys
+from pathlib import Path
+audit=json.load(open(sys.argv[1])); relabel=json.load(open(sys.argv[2])); actual=str(Path(sys.argv[3]).resolve()); expected=int(sys.argv[4])
+assert audit['status']=='complete' and audit['batch_files']==expected and str(Path(audit['fkd_dir']).resolve())==actual
+assert relabel['status']=='complete' and relabel['epochs']==400 and relabel['batch_size']==20
+PY
+ then
+  cp "$central_audit" "$actual/fkd_audit.json"
+  return
+ fi
  [[ -d "$actual" ]] && count=$(find "$actual" -name 'batch_*.tar' -type f | wc -l)
  if ((count!=expected)); then
   CUDA_VISIBLE_DEVICES=$gpu python -u "$ROOT/CV-DD/relabel/relabel.py" --syn-data-path "$(selected "$ipc" "$rseed")" \
@@ -55,7 +67,6 @@ relabel(){
    > "$EXP/logs/relabel_ipc${ipc}_rseed${rseed}.log" 2>&1
  fi
  audit="$actual/fkd_audit.json"
- central_audit="$EXP/audits/fkd_ipc${ipc}_rseed${rseed}.json"
  if [[ ! -f "$audit" && -f "$central_audit" ]] && python -c "import json; assert json.load(open('$central_audit'))['status']=='complete'"; then
   cp "$central_audit" "$audit"
  fi
