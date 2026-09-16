@@ -29,7 +29,7 @@ def main():
                 path = a.root / f"results/rseed{selection}/ipc{ipc}_sseed{student}.json"
                 payload = json.loads(path.read_text())
                 audit_payload(payload, 100, 3333)
-                if payload["student_seed"] != student or payload["ipc"] != ipc:
+                if payload["student_seed"] != student or payload["standard_protocol"]["ipc"] != ipc:
                     raise RuntimeError(f"result identity mismatch: {path}")
                 if payload["standard_protocol"]["version"] != "v2" or payload["random_real_soft_v2"]["selection_seed"] != selection:
                     raise RuntimeError(f"provenance mismatch: {path}")
