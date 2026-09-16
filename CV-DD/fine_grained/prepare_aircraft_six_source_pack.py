@@ -21,8 +21,9 @@ def main():
     p.add_argument("--schedule-seed", type=int, default=42)
     a = p.parse_args()
     selection = json.loads(a.selection_manifest.read_text())
-    if selection.get("status") != "complete" or selection.get("ipc") != 10 or selection.get("selection_seed") != 0:
-        raise RuntimeError("requires completed nested RandomReal rseed0 IPC10 manifest")
+    if (selection.get("status") != "complete" or selection.get("ipc") != 10
+            or selection.get("selection_seed") not in (0, 1, 2)):
+        raise RuntimeError("requires completed nested RandomReal rseed0/1/2 IPC10 manifest")
     boxes = {}
     for line in a.boxes.read_text().splitlines():
         z = line.split(); boxes[z[0]] = tuple(map(int, z[1:5]))
