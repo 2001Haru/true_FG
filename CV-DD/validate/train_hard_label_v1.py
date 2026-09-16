@@ -50,6 +50,8 @@ def parse_args() -> argparse.Namespace:
     train_source = parser.add_mutually_exclusive_group(required=True)
     train_source.add_argument("--train-dir", type=Path)
     train_source.add_argument("--train-manifest", type=Path)
+    train_source.add_argument("--paired-source-manifest", type=Path)
+    parser.add_argument("--paired-source-mode", choices=("reference", "compressed"))
     parser.add_argument("--val-dir", required=True, type=Path)
     parser.add_argument("--dataset-name", required=True)
     parser.add_argument("--num-classes", required=True, type=int)
@@ -98,6 +100,10 @@ def parse_args() -> argparse.Namespace:
         parser.error("non-equal manifest loss weighting requires --train-manifest")
     if not 0 < args.rrc_min_scale <= args.rrc_max_scale <= 1:
         parser.error("RRC scale must satisfy 0 < min <= max <= 1")
+    if (args.paired_source_manifest is None) != (args.paired_source_mode is None):
+        parser.error("--paired-source-manifest and --paired-source-mode must be provided together")
+    if args.paired_source_manifest is not None and args.train_crop_mode != "mild_rc":
+        parser.error("paired-source Hard-v1 is frozen to mild_rc")
     return args
 
 
@@ -374,7 +380,12 @@ def main() -> None:
     device = torch.device("cuda")
     train_transform, validation_transform = make_transforms(args)
     validation_dataset = datasets.ImageFolder(args.val_dir, transform=validation_transform)
-    if args.train_manifest is not None:
+    if args.paired_source_manifest is not None:
+        from paired_source_dataset import PairedEpochSampler, PairedHardDataset
+        train_dataset = PairedHardDataset(args.paired_source_manifest, args.paired_source_mode, args.student_seed)
+        train_source_type = "paired_source_manifest"
+        train_source = str(args.paired_source_manifest.resolve())
+    elif args.train_manifest is not None:
         train_dataset = ManifestImageDataset(
             args.train_manifest,
             transform=train_transform,
@@ -398,10 +409,13 @@ def main() -> None:
 
     loader_generator = torch.Generator().manual_seed(args.student_seed)
     persistent = args.persistent_workers and args.workers > 0
+    paired_sampler = (PairedEpochSampler(train_dataset, args.student_seed)
+                      if args.paired_source_manifest is not None else None)
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=args.batch_size,
-        shuffle=True,
+        shuffle=paired_sampler is None,
+        sampler=paired_sampler,
         generator=loader_generator,
         num_workers=args.workers,
         persistent_workers=persistent,
@@ -462,6 +476,8 @@ def main() -> None:
     optimizer.zero_grad(set_to_none=True)
     while updates_completed < args.total_updates:
         epochs_started += 1
+        if hasattr(train_dataset, "set_epoch"):
+            train_dataset.set_epoch(epochs_started - 1)
         model.train()
         for batch in train_loader:
             if updates_completed >= args.total_updates:
@@ -523,6 +539,8 @@ def main() -> None:
         },
         final_checkpoint,
     )
+    paired_trajectory_audit = (train_dataset.trajectory_audit(epochs_started)
+                               if args.paired_source_manifest is not None else None)
     payload = {
         "status": "complete",
         "protocol": args.protocol_name,
@@ -583,6 +601,10 @@ def main() -> None:
         "drop_last": False,
         "epochs_started": epochs_started,
         "examples_seen": examples_seen,
+        "paired_source_manifest": (str(args.paired_source_manifest.resolve())
+                                   if args.paired_source_manifest is not None else None),
+        "paired_source_mode": args.paired_source_mode,
+        "paired_source_trajectory_audit": paired_trajectory_audit,
         "bn_running_statistics": "updated_in_train_mode",
         "normalization_mean": list(IMAGENET_MEAN),
         "normalization_std": list(IMAGENET_STD),

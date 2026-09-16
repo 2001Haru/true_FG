@@ -30,6 +30,7 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 from models import *
 from relabel.utils_fkd import (ComposeWithCoords, ImageFolder_FKD_MIX,
+                               FullImageResizeWithCoords,
                                RandomHorizontalFlipWithRes,
                                RandomResizedCropWithCoords,
                                SelectQuadrantWithRes, mix_aug)
@@ -94,6 +95,9 @@ def get_args():
     parser.add_argument('--simple', default=False,action='store_true',)
     parser.add_argument('--fkd-path', default=None, type=str,
                         help='path to the fkd labels')
+    parser.add_argument('--paired-source-manifest', type=str, default=None,
+                        help='two-source parent manifest; FKD payload must record parent/subsource')
+    parser.add_argument('--paired-source-mode', choices=('reference', 'compressed'), default=None)
     parser.add_argument('--hard-label', action='store_true',
                         help='train directly from ImageFolder class IDs with cross-entropy; do not load FKD labels')
     parser.add_argument('--fkd-hard-label', action='store_true',
@@ -195,6 +199,10 @@ def get_args():
         parser.error('--fkd-teacher-hard-label currently requires an unmixed FKD view')
     if args.fkd_target_probabilities and hard_modes:
         parser.error('--fkd-target-probabilities is only valid for soft KL supervision')
+    if (args.paired_source_manifest is None) != (args.paired_source_mode is None):
+        parser.error('--paired-source-manifest and --paired-source-mode must be provided together')
+    if args.paired_source_manifest is not None and hard_modes:
+        parser.error('paired-source FKD mode currently supports ordinary soft KL only')
 
     args.mode = 'fkd_load'
 
@@ -449,6 +457,13 @@ def main():
             f'=> hard-label training: images={len(train_dataset)}, '
             f'classes={len(train_dataset.classes)}, loss=cross_entropy'
         )
+    elif args.paired_source_manifest is not None:
+        sys.path.insert(0, os.path.join(parent_dir, 'fine_grained'))
+        from paired_source_dataset import PairedSoftLoadDataset
+        train_dataset = PairedSoftLoadDataset(
+            args.paired_source_manifest, args.paired_source_mode, args.fkd_path,
+            args.epochs, args.batch_size, sampler_seed=args.fkd_seed,
+        )
     else:
         train_dataset = ImageFolder_FKD_MIX(
             fkd_path=args.fkd_path,
@@ -466,9 +481,12 @@ def main():
                 normalize,
             ]))
 
-    generator = torch.Generator()
-    generator.manual_seed(args.fkd_seed)
-    sampler = torch.utils.data.RandomSampler(train_dataset, generator=generator)
+    if args.paired_source_manifest is not None:
+        sampler = train_dataset.sampler
+    else:
+        generator = torch.Generator()
+        generator.manual_seed(args.fkd_seed)
+        sampler = torch.utils.data.RandomSampler(train_dataset, generator=generator)
 
 
     loader_kwargs = dict(
@@ -897,6 +915,9 @@ def export_per_class_accuracy(model, args, best_acc1):
         'mix_type': args.mix_type,
         'synthetic_data_path': os.path.abspath(args.original_data_path),
         'fkd_path': (os.path.abspath(args.fkd_path) if args.fkd_path else None),
+        'paired_source_manifest': (os.path.abspath(args.paired_source_manifest)
+                                   if args.paired_source_manifest else None),
+        'paired_source_mode': args.paired_source_mode,
         'optimizer': ('sgd' if args.sgd else 'adamw'),
         'learning_rate': (args.sgd_lr if args.sgd else
                           None if args.adamw_backbone_lr is not None else args.adamw_lr),
