@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 EXP="${EXP_ROOT:-/linxi/dataset/FGDD_compression/aircraft_ipc3_retarget_light_rrc_v1}"
 STAGE="${STAGE_ROOT:-/tmp/fgdd_aircraft_ipc3_retarget_light_rrc_v1}"
 R0=/linxi/dataset/FG_CoDA_standard/v2/baselines/random_real_standard/selected/A_imsize224/rseed0/ipc3
