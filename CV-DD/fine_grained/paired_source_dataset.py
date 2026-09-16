@@ -44,7 +44,8 @@ class PairedSourceIndex:
         payload = json.loads(self.manifest_path.read_text())
         if payload.get("status") != "complete" or payload.get("parents") != 300:
             raise RuntimeError(f"invalid paired source manifest: {manifest_path}")
-        if image_mode not in ("reference", "compressed", "uniform"):
+        if image_mode not in ("reference", "compressed", "uniform", "object_decoded",
+                              "background_decoded", "background_hsmooth"):
             raise ValueError(image_mode)
         self.image_mode = image_mode
         self.rows = sorted(payload["records"], key=lambda row: row["parent_index"])
@@ -62,12 +63,11 @@ class PairedSourceIndex:
     def load(self, parent_index, source_index):
         row = self.rows[parent_index]
         source = row["sources"][source_index]
-        if self.image_mode == "reference":
-            with Image.open(source["reference_path"]) as handle:
-                image = handle.convert("RGB")
-            if image.size != (224, 224):
-                raise RuntimeError(f"reference is not 224: {source['reference_path']}")
-            return image
+        with Image.open(source["reference_path"]) as handle:
+            original = handle.convert("RGB")
+        if original.size != (224, 224):
+            raise RuntimeError(f"reference is not 224: {source['reference_path']}")
+        if self.image_mode == "reference": return original
         if self.image_mode == "uniform":
             with Image.open(row["uniform_packed_path"]) as handle:
                 packed = handle.convert("RGB")
@@ -78,7 +78,31 @@ class PairedSourceIndex:
         if packed.size != (224, 224):
             raise RuntimeError(f"packed image is not 224: {row['packed_path']}")
         strip = packed.crop((0, source_index * 112, 224, (source_index + 1) * 112))
-        return decode_vertical(strip, source["density"])
+        decoded = decode_vertical(strip, source["density"])
+        if self.image_mode == "compressed": return decoded
+        xmin,ymin,xmax,ymax=source["official_bbox_1indexed"];raw_h=source["raw_size"][1]
+        start=max(0,min(223,math.floor((ymin-1.)/raw_h*224.)));end=max(start+1,min(224,math.ceil(ymax/raw_h*224.)))
+        original_array=np.asarray(original,dtype=np.uint8).copy();decoded_array=np.asarray(decoded,dtype=np.uint8).copy()
+        if self.image_mode == "object_decoded":
+            original_array[start:end]=decoded_array[start:end]
+            return Image.fromarray(original_array,"RGB")
+        if self.image_mode == "background_decoded":
+            decoded_array[start:end]=original_array[start:end]
+            return Image.fromarray(decoded_array,"RGB")
+        # Decode-only artifact intervention: horizontally smooth background rows
+        # in proportion to the local inverse density.  Preserve object rows and
+        # the bottom eight copyright-strip rows exactly as decoded.
+        output=decoded_array.copy();density=np.asarray(source["density"],dtype=np.float64)
+        for y in range(216):
+            if start<=y<end: continue
+            width=max(1,min(15,int(round(1.0/max(float(density[y]),1e-6)))))
+            if width%2==0: width+=1
+            radius=width//2
+            if radius:
+                padded=np.pad(decoded_array[y].astype(np.float64),((radius,radius),(0,0)),mode="reflect")
+                cumulative=np.cumsum(padded,axis=0);cumulative=np.vstack((np.zeros((1,3)),cumulative))
+                output[y]=np.rint((cumulative[width:]-cumulative[:-width])/width).clip(0,255).astype(np.uint8)
+        return Image.fromarray(output,"RGB")
 
 
 class PairedEpochSampler(torch.utils.data.Sampler):

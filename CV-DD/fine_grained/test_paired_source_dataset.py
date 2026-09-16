@@ -20,13 +20,13 @@ class PairedSourceDatasetTest(unittest.TestCase):
         ref0 = root / "red.png"; ref1 = root / "blue.png"; packed = root / "packed.png"
         Image.new("RGB", (224, 224), (255, 0, 0)).save(ref0)
         Image.new("RGB", (224, 224), (0, 0, 255)).save(ref1)
-        image = Image.new("RGB", (224, 224)); image.paste(Image.new("RGB", (224, 112), (255, 0, 0)), (0, 0)); image.paste(Image.new("RGB", (224, 112), (0, 0, 255)), (0, 112)); image.save(packed)
+        image = Image.new("RGB", (224, 224)); image.paste(Image.new("RGB", (224, 112), (0, 255, 0)), (0, 0)); image.paste(Image.new("RGB", (224, 112), (0, 0, 255)), (0, 112)); image.save(packed)
         rows=[]
         for parent in range(300):
             rows.append({"parent_index":parent,"class_id":parent//3,"class":f"{parent//3:03d}","slot":parent%3,
                          "packed_path":str(packed),"sources":[
-                             {"reference_path":str(ref0),"density":[.5]*224,"identity":"red"},
-                             {"reference_path":str(ref1),"density":[.5]*224,"identity":"blue"}]})
+                             {"reference_path":str(ref0),"density":[.5]*224,"identity":"red","official_bbox_1indexed":[1,57,224,168],"raw_size":[224,224]},
+                             {"reference_path":str(ref1),"density":[.5]*224,"identity":"blue","official_bbox_1indexed":[1,57,224,168],"raw_size":[224,224]}]})
         manifest=root/"manifest.json";manifest.write_text(json.dumps({"status":"complete","parents":300,"classes":[f"{i:03d}" for i in range(100)],"schedule_seed":42,"records":rows}));self.manifest=manifest;self.root=root
 
     def tearDown(self): self.temp.cleanup()
@@ -55,6 +55,15 @@ class PairedSourceDatasetTest(unittest.TestCase):
     def test_hard_schedule_is_exactly_balanced(self):
         dataset=PairedHardDataset(self.manifest,"reference",42);audit=dataset.trajectory_audit(600)
         self.assertEqual(audit["examples"],180000);self.assertEqual(audit["source_exposure_min"],300);self.assertEqual(audit["source_exposure_max"],300)
+
+    def test_hybrid_modes_split_object_and_background_rows(self):
+        from paired_source_dataset import PairedSourceIndex
+        object_view=np.asarray(PairedSourceIndex(self.manifest,"object_decoded").load(0,0))
+        background_view=np.asarray(PairedSourceIndex(self.manifest,"background_decoded").load(0,0))
+        smooth_view=np.asarray(PairedSourceIndex(self.manifest,"background_hsmooth").load(0,0))
+        self.assertTrue(np.all(object_view[80]==np.array([0,255,0])));self.assertTrue(np.all(object_view[20]==np.array([255,0,0])))
+        self.assertTrue(np.all(background_view[80]==np.array([255,0,0])));self.assertTrue(np.all(background_view[20]==np.array([0,255,0])))
+        self.assertTrue(np.all(smooth_view[80]==np.array([0,255,0])));self.assertTrue(np.all(smooth_view[220]==np.array([0,255,0])))
 
 
 if __name__ == "__main__": unittest.main()
