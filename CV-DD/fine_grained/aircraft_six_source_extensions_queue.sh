@@ -8,6 +8,7 @@ RAW=/linxi/dataset/FD2/raw/fgvc-aircraft-2013b/data
 TEACHER=/linxi/dataset/FG_SRe2L_standard/v1/teachers/A_imsize224/tseed42/ResNet18.pth
 TEST=/linxi/dataset/FG_SRe2L_repro/v1/datasets/A_imsize224/test
 WEIGHTS=/linxi/models/torchvision/resnet18-f37072fd.pth
+export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 mkdir -p "$EXP"/{construction,logs,status,locks,fkd,results,checkpoints,post_eval,summary,audits}
 exec 9>"$EXP/locks/launcher.lock"; flock -n 9 || exit 75
 trap 's=$?; if ((s)); then rm -f "$EXP/status/running"; echo "$(date --iso-8601=seconds) exit=$s" > "$EXP/status/failed"; fi' EXIT
