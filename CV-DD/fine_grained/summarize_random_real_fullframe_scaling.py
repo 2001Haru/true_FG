@@ -31,7 +31,7 @@ def main():
                 audit_payload(payload, 100, 3333)
                 if payload["student_seed"] != student or payload["standard_protocol"]["ipc"] != ipc:
                     raise RuntimeError(f"result identity mismatch: {path}")
-                if payload["standard_protocol"]["version"] != "v2" or payload["random_real_soft_v2"]["selection_seed"] != selection:
+                if payload["standard_protocol"]["version"] != "v2" or payload["standard_protocol"]["selection_seed"] != selection:
                     raise RuntimeError(f"provenance mismatch: {path}")
                 rows[(ipc, selection, student)] = payload
     groups = {}
