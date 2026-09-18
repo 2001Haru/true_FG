@@ -39,7 +39,7 @@ def main():
  public=json.load(open(a.public_manifest));bbox=json.load(open(a.bbox_manifest));boxes={x['prepared_path']:x for x in bbox['rows']};base=json.load(open(a.base_manifest))
  axis=base['compression_axis'];b=float(base['background_minimum']);heights=base['strip_heights'];clear=[];decoded=[];densities=[]
  for index,value in enumerate(public['selected']):
-  path=Path(value).resolve();meta=boxes[str(path)];image=np.asarray(Image.open(path).convert('RGB'),np.uint8);rho=density(meta['box224_xyxy'],axis,int(heights[index%3]),b)
+  path=Path(value).resolve();meta=boxes[str(path)];image=np.asarray(Image.open(path).convert('RGB'),np.uint8);rho=density(meta['box224_xyxy'],axis,int(heights[index%len(heights)]),b)
   oriented=image if axis=='row' else image.transpose(1,0,2);encoded,_=encode_vertical_area(oriented,rho);recon=np.asarray(decode_vertical(encoded,rho),np.uint8)
   if axis=='column':recon=recon.transpose(1,0,2)
   clear.append(torch.from_numpy(image.copy()).permute(2,0,1).float()/255);decoded.append(torch.from_numpy(recon.copy()).permute(2,0,1).float()/255);densities.append(torch.from_numpy(rho.copy()))
