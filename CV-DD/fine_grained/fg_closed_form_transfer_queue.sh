@@ -6,7 +6,7 @@ ROOT=/linxi/true_FG
 FG="$ROOT/CV-DD/fine_grained"
 EXP=/linxi/dataset/FGDD_closed_form_transfer/v1
 STAGE="$EXP/stage"
-RANDOM=/linxi/dataset/FG_CoDA_standard/v2/baselines/random_real_standard
+SELECTION_ROOT=/linxi/dataset/FG_CoDA_standard/v2/baselines/random_real_standard
 DATA=/linxi/dataset/FG_SRe2L_repro/v1/datasets
 TEACHERS=/linxi/dataset/FG_SRe2L_standard/v1/teachers
 WEIGHTS=/linxi/models/torchvision/resnet18-f37072fd.pth
@@ -46,7 +46,7 @@ for spec in "${CONFIGS[@]}"; do
   IFS=: read -r name dataset ipc k axis <<<"$spec"; out="$STAGE/construction/$name"; mkdir -p "$out"
   read -ra mu <<<"$(mean "$dataset")"; read -ra sigma <<<"$(std "$dataset")"
   python "$FG/prepare_fg_rule_pack.py" \
-    --selection-manifest "$RANDOM/manifests/$dataset/rseed0/ipc10.json" \
+    --selection-manifest "$SELECTION_ROOT/manifests/$dataset/rseed0/ipc10.json" \
     --bbox-manifest "$STAGE/bbox/${dataset}_bbox_manifest.json" --axis "$axis" --k "$k" \
     --storage-ipc "$ipc" --phi .106 --output-root "$out" --mean "${mu[@]}" --std "${sigma[@]}" \
     >"$EXP/logs/pack_${name}.log" 2>&1
@@ -54,7 +54,7 @@ done
 
 for dataset in A_imsize224 CUB_imsize224 SC_imsize224; do
   python "$FG/prepare_fg_public600_manifest.py" --bbox-manifest "$STAGE/bbox/${dataset}_bbox_manifest.json" \
-    --selection-manifest "$RANDOM/manifests/$dataset/rseed0/ipc10.json" \
+    --selection-manifest "$SELECTION_ROOT/manifests/$dataset/rseed0/ipc10.json" \
     --output "$STAGE/fit/${dataset}_public600.json" >"$EXP/logs/public600_${dataset}.log" 2>&1
 done
 
