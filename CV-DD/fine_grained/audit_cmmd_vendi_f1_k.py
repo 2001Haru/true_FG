@@ -123,7 +123,10 @@ def unbiased_cmmd(left, right, sigma=10., scale=1000.):
 
 def vendi(features):
     features = F.normalize(features.cuda().double(), dim=1)
-    kernel = features @ features.T
+    # K/N and Z^T Z/N have identical non-zero eigenvalues.  Use the smaller
+    # side so view-level audits with thousands of samples remain exact.
+    kernel = (features @ features.T if len(features) <= features.shape[1]
+              else features.T @ features)
     eigenvalues = torch.linalg.eigvalsh(kernel).clamp_min_(0)
     eigenvalues = eigenvalues / eigenvalues.sum()
     positive = eigenvalues[eigenvalues > 1e-15]
