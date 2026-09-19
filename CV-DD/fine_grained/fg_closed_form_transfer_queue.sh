@@ -194,7 +194,7 @@ for name,arms in [('SC_ipc3_k3',('f1',)),('CUB_ipc3_k2',('u6','f1')),('SC_ipc3_k
     elif {'u6','f1'}<=rows.keys():comparisons[name]={'encoding_u6_minus_f1':stats(rows['u6'][s]['final_epoch_top1']-rows['f1'][s]['final_epoch_top1'] for s in (42,43,44))}
 prior=json.load(open(old/'summary'/'summary.json'))
 new=load('SC_ipc3_k3','f1'); prior_f1=prior['groups']['SC_imsize224_f1']['final']['values']
-comparisons['SC_ipc3_k3']['row_minus_old_column_f1']=stats(new[s]['final_epoch_top1']-prior_f1[i] for i,s in enumerate((42,43,44)))
+comparisons.setdefault('SC_ipc3_k3',{})['row_minus_old_column_f1']=stats(new[s]['final_epoch_top1']-prior_f1[i] for i,s in enumerate((42,43,44)))
 out={'status':'complete','protocol':'fg_closed_form_transfer_v1','phi':.106,'tau':.6,'groups':groups,'comparisons':comparisons,
      'expected_fkd':14,'expected_students':42,'preflight':json.load(open(root/'audits'/'preflight.json'))}
 (root/'summary'/'summary.json').write_text(json.dumps(out,indent=2)+'\n')
