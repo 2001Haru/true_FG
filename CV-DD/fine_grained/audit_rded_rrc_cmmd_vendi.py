@@ -91,6 +91,7 @@ def main():
     aggregate = {}
     for mode in ("off", "on"):
         names = sorted(name for name in groups if name.endswith("_" + mode))
+        if not names: continue
         if len(names) != 3: raise RuntimeError((mode, names))
         aggregate[mode] = {"groups": names, "cmmd_unbiased": {}, "vendi_teacher_cosine": {}}
         for reference in references:
