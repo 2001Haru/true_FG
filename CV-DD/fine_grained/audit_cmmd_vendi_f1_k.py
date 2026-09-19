@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -15,7 +16,6 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from torchvision import models
 from torchvision.transforms import functional as TF
-from transformers import CLIPVisionModelWithProjection
 
 from paired_source_dataset import PairedSourceIndex
 
@@ -86,7 +86,7 @@ def extract(dataset, clip_model, teacher, batch_size, workers, need_teacher, cac
         images = images.cuda(non_blocking=True).float().div_(255)
         clip_input = F.interpolate(images, size=(336, 336), mode="bicubic", align_corners=False, antialias=True)
         clip_input = normalize(clip_input, CLIP_MEAN, CLIP_STD)
-        clip_feature = clip_model(pixel_values=clip_input).image_embeds
+        clip_feature = clip_model.encode_image(clip_input)
         clip_rows.append(F.normalize(clip_feature.float(), dim=1).cpu())
         if need_teacher:
             teacher(normalize(images, AIRCRAFT_MEAN, AIRCRAFT_STD))
@@ -161,11 +161,19 @@ def main():
     parser.add_argument("--output-root", required=True, type=Path)
     parser.add_argument("--batch-size", type=int, default=24)
     parser.add_argument("--workers", type=int, default=8)
-    parser.add_argument("--clip-model", default="openai/clip-vit-large-patch14-336")
+    parser.add_argument("--clip-source-root", type=Path,
+                        default=Path(__file__).resolve().parents[2] / "third_party/metric_backbones/CLIP")
+    parser.add_argument("--clip-download-root", type=Path, default=Path("/root/.cache/clip"))
     args = parser.parse_args(); torch.set_num_threads(4); torch.set_num_interop_threads(1)
     specs = dict(value.split("=", 1) for value in args.spec)
     args.output_root.mkdir(parents=True, exist_ok=True); cache = args.output_root / "features"
-    clip_model = CLIPVisionModelWithProjection.from_pretrained(args.clip_model).cuda().eval()
+    sys.path.insert(0, str(args.clip_source_root.resolve()))
+    import clip
+    clip_model, _ = clip.load("ViT-L/14@336px", device="cuda", jit=False,
+                              download_root=str(args.clip_download_root))
+    clip_model = clip_model.float().eval()
+    clip_weight = args.clip_download_root / "ViT-L-14-336px.pt"
+    if not clip_weight.is_file(): raise FileNotFoundError(clip_weight)
     teacher = load_teacher(args.teacher)
     references = {}
     for name, root in (("test", args.test_root), ("train", args.train_root), ("r0", args.r0_root)):
@@ -191,7 +199,9 @@ def main():
     }
     output = {"status": "complete", "protocol": "aircraft_f1_k_cmmd_vendi_v1",
               "interpretation": "raw and ceiling are two Student readings for the same decoded image sets, not separate image conditions",
-              "clip": {"model": args.clip_model, "input": "RGB[0,1] -> bicubic antialiased warp336 -> OpenAI CLIP normalization",
+              "clip": {"model": "OpenAI CLIP ViT-L/14@336px", "source_revision": "d05afc436d78f1c48dc0dbf8e5980a9d471f35f6",
+                       "weight_sha256": file_sha256(clip_weight),
+                       "input": "RGB[0,1] -> bicubic antialiased warp336 -> OpenAI CLIP normalization",
                        "embedding": "projected 768D image embedding, L2 normalized as in official Scenic CLIP default"},
               "cmmd": {"estimator": "unbiased U-statistic Gaussian MMD", "sigma": 10., "scale": 1000.,
                        "deviation_from_official_code": "user-requested unbiased estimate; current official code uses minimum-variance biased estimate"},
