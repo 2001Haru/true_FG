@@ -77,7 +77,7 @@ class CommonViewDataset(Dataset):
             if len(samples) != 300:
                 raise RuntimeError((image_root, len(samples)))
             self.samples = samples
-        # Epoch-major and then parent-major makes [:600] a balanced, nested
+        # Epoch-major and then parent-major supports a common stratified
         # two-view-per-parent subset of the full 32-view set.
         self.rows = [(epoch, parent) for epoch in epochs for parent in range(300)]
 
@@ -93,19 +93,23 @@ class CommonViewDataset(Dataset):
             source = self.index.source_index(parent, epoch)
             image = self.index.load(parent, source)
             label = self.targets[parent]
+        # Match the audited FKD replay path: convert the stored 8-bit image to
+        # a tensor before cropping, and use bilinear without antialiasing.
+        image = TF.pil_to_tensor(image)
         coord, flip = self.schedule.rows[(epoch, parent)]
         if self.policy == "on":
-            top, left = round(float(coord[0]) * image.height), round(float(coord[1]) * image.width)
-            height, width = round(float(coord[2]) * image.height), round(float(coord[3]) * image.width)
-            if min(height, width) <= 0 or top + height > image.height or left + width > image.width:
-                raise RuntimeError((epoch, parent, coord.tolist(), image.size))
+            top, left = round(float(coord[0]) * image.shape[-2]), round(float(coord[1]) * image.shape[-1])
+            height, width = round(float(coord[2]) * image.shape[-2]), round(float(coord[3]) * image.shape[-1])
+            if min(height, width) <= 0 or top + height > image.shape[-2] or left + width > image.shape[-1]:
+                raise RuntimeError((epoch, parent, coord.tolist(), tuple(image.shape)))
             image = TF.resized_crop(image, top, left, height, width, (224, 224),
                                     interpolation=InterpolationMode.BILINEAR, antialias=False)
-        elif image.size != (224, 224):
-            image = image.resize((224, 224), Image.Resampling.BILINEAR)
+        elif tuple(image.shape[-2:]) != (224, 224):
+            image = TF.resize(image, (224, 224), interpolation=InterpolationMode.BILINEAR,
+                              antialias=False)
         if flip:
             image = TF.hflip(image)
-        return TF.pil_to_tensor(image), label
+        return image, label
 
 
 def main():
@@ -142,6 +146,15 @@ def main():
     clip_model = clip_model.float().eval()
     references = {name: torch.from_numpy(np.load(args.reference_features / f"{name}.npz")["clip"])
                   for name in ("test", "train", "r0")}
+    # Frozen before looking at any metric: two of the 32 view positions for
+    # every parent.  Per-parent sampling avoids over-weighting any source slot
+    # while preserving exact class balance and nesting in N=9600.
+    sensitivity_indices = []
+    for parent in range(300):
+        chosen = np.random.default_rng(20260919 + parent).choice(len(epochs), size=2, replace=False)
+        sensitivity_indices.extend(int(position) * 300 + parent for position in sorted(chosen))
+    sensitivity_indices = torch.tensor(sorted(sensitivity_indices), dtype=torch.long)
+    sensitivity_digest = hashlib.sha256(sensitivity_indices.numpy().tobytes()).hexdigest()
     args.output_root.mkdir(parents=True, exist_ok=True)
     groups = {}
     for name, image_root, manifest in specs:
@@ -152,9 +165,11 @@ def main():
             raise RuntimeError((name, len(feature), len(labels)))
         if sorted(torch.bincount(labels, minlength=100).tolist()) != [96] * 100:
             raise RuntimeError(f"unbalanced labels for {name}")
+        if sorted(torch.bincount(labels[sensitivity_indices], minlength=100).tolist()) != [6] * 100:
+            raise RuntimeError(f"unbalanced N=600 subset for {name}")
         groups[name] = {}
         for count in (600, 9600):
-            subset = feature[:count]
+            subset = feature[sensitivity_indices] if count == 600 else feature
             groups[name][f"n{count}"] = {reference: unbiased_cmmd(subset, value)
                                           for reference, value in references.items()}
         print(name, json.dumps(groups[name]), flush=True)
@@ -162,7 +177,9 @@ def main():
         "status": "complete", "protocol": "aircraft_cmmd_common_views_v1",
         "policy": args.policy, "cutmix": False, "epochs": epochs,
         "main_n": 9600, "sensitivity_n": 600,
-        "n600_definition": "first two selected epochs for every parent; strict prefix subset of N=9600",
+        "n600_definition": "two pre-registered view positions per parent selected with NumPy seed "
+                           "20260919+parent; exact balanced subset of N=9600",
+        "n600_indices_sha256": sensitivity_digest,
         "view_definition": "one canonical R0 seed0 RRC trajectory shared by every construction; "
                            "RRC-off replaces crop coordinates by identity but retains the same flips",
         "geometry_fkd": str(args.geometry_fkd.resolve()),
