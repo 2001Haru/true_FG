@@ -215,6 +215,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--sampled-epochs", type=int, default=40)
     args = parser.parse_args()
+    torch.set_num_threads(4); torch.set_num_interop_threads(1)
     models_ = [load_model(path) for path in args.student]
     epochs = set(np.linspace(0, 399, args.sampled_epochs).round().astype(int).tolist())
     scores = {"single": single_views(args, models_, epochs), "six": six_views(args, models_, epochs)}
