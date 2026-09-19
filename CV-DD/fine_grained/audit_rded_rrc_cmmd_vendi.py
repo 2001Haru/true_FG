@@ -45,8 +45,8 @@ class FKDViewDataset(Dataset):
         path, label, coord, flip = self.rows[index]
         image = TF.pil_to_tensor(Image.open(path).convert("RGB"))
         if not torch.allclose(coord, torch.tensor([0., 0., 1., 1.]), rtol=0, atol=1e-7):
-            top, left = float(coord[0]) * 224, float(coord[1]) * 224
-            height, width = float(coord[2]) * 224, float(coord[3]) * 224
+            top, left = round(float(coord[0]) * 224), round(float(coord[1]) * 224)
+            height, width = round(float(coord[2]) * 224), round(float(coord[3]) * 224)
             image = TF.resized_crop(image, top, left, height, width, (224, 224),
                                     interpolation=InterpolationMode.BILINEAR, antialias=False)
         if flip: image = TF.hflip(image)
