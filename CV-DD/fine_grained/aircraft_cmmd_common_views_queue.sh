@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT="${OUT:-/linxi/dataset/FGDD_metrics/aircraft_cmmd_common_views_v1}"
 SCRIPT="$ROOT_DIR/CV-DD/fine_grained/audit_cmmd_common_views.py"
