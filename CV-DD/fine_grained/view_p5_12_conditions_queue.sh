@@ -3,6 +3,7 @@ set -euo pipefail
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 ROOT=/linxi/true_FG/CV-DD/fine_grained
 OUT=/linxi/dataset/FGDD_BN_audits/aircraft_view_p5_12_v1
+SAMPLED_EPOCHS=${SAMPLED_EPOCHS:-40}
 mkdir -p "$OUT"/{logs,status}
 cat >"$OUT/conditions.json" <<'JSON'
 {"conditions":[
@@ -28,5 +29,5 @@ STUDENTS=(
 date --iso-8601=seconds >"$OUT/status/running"
 CUDA_VISIBLE_DEVICES=0 python "$ROOT/audit_view_p5_12_conditions.py" --conditions "$OUT/conditions.json" \
  --student "${STUDENTS[0]}" --student "${STUDENTS[1]}" --student "${STUDENTS[2]}" \
- --sampled-epochs 40 --output "$OUT/view_p5.json" >"$OUT/logs/view_p5.log" 2>&1
+ --sampled-epochs "$SAMPLED_EPOCHS" --output "$OUT/view_p5.json" >"$OUT/logs/view_p5.log" 2>&1
 rm -f "$OUT/status/running";date --iso-8601=seconds >"$OUT/status/complete"
