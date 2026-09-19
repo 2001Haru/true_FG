@@ -59,13 +59,14 @@ class CommonSchedule:
 
 class CommonViewDataset(Dataset):
     def __init__(self, schedule: CommonSchedule, epochs: list[int], policy: str,
-                 image_root: Path | None = None, paired_manifest: Path | None = None):
+                 image_root: Path | None = None, paired_manifest: Path | None = None,
+                 paired_mode: str = "compressed_fir"):
         if (image_root is None) == (paired_manifest is None):
             raise ValueError("exactly one of image_root/paired_manifest is required")
         if policy not in ("off", "on"):
             raise ValueError(policy)
         self.schedule, self.epochs, self.policy = schedule, epochs, policy
-        self.index = PairedSourceIndex(paired_manifest, "compressed_fir") if paired_manifest else None
+        self.index = PairedSourceIndex(paired_manifest, paired_mode) if paired_manifest else None
         if self.index is not None:
             if len(self.index.rows) != 300:
                 raise RuntimeError((paired_manifest, len(self.index.rows)))
