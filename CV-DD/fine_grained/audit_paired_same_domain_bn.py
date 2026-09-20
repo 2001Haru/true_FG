@@ -2,15 +2,11 @@
 import argparse,glob,json,statistics
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from types import SimpleNamespace
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets,models,transforms
 from paired_source_dataset import PairedSourceIndex,AIRCRAFT_MEAN,AIRCRAFT_STD
-import sys
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from relabel.utils_fkd import mix_aug
 def st(x):x=list(map(float,x));return {'mean':statistics.mean(x),'sample_sd':statistics.stdev(x),'values':x}
 def load(path,dev):
  s=torch.load(path,map_location='cpu',weights_only=False)['state_dict'];s={k.removeprefix('module.'):v for k,v in s.items()};m=models.resnet18(weights=None);m.fc=nn.Linear(m.fc.in_features,100);m.load_state_dict(s);return m.to(dev)
@@ -28,7 +24,7 @@ def main():
  for e in range(a.epochs):
   for b in range(15):
    c=torch.load(a.fkd/f'epoch_{e}/batch_{b}.tar',map_location='cpu',weights_only=False);configs.append((c[1].bool(),c[2],c[3],c[4],c[6].long(),c[7].long()))
- test=datasets.ImageFolder(a.test_root,transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize(AIRCRAFT_MEAN,AIRCRAFT_STD)]));loader=DataLoader(test,batch_size=256,num_workers=6,persistent_workers=True,pin_memory=True);mixargs=SimpleNamespace(mode='fkd_load',mix_type='cutmix',cutmix=1.,mixup=.8);rows=[]
+ test=datasets.ImageFolder(a.test_root,transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize(AIRCRAFT_MEAN,AIRCRAFT_STD)]));loader=DataLoader(test,batch_size=256,num_workers=6,persistent_workers=True,pin_memory=True);rows=[]
  for path in map(Path,sorted(glob.glob(a.checkpoints))):
   m=load(path,dev);m.requires_grad_(False);params={n:v.cpu().clone() for n,v in m.named_parameters()};before=evaluate(m,loader,dev)
   m.eval()
@@ -37,7 +33,11 @@ def main():
   with torch.no_grad():
    for flip,mi,ml,mb,sources,parents in configs:
     x=base[parents,sources].clone();x[flip]=torch.flip(x[flip],(-1,));x=x.to(dev,dtype=torch.float32)
-    if not a.disable_cutmix:x,_,_,_=mix_aug(x,mixargs,mi,ml,mb)
+    if not a.disable_cutmix:
+     # Exact replay of utils_fkd.cutmix in fkd_load mode, kept local so this
+     # diagnostic does not import unrelated model definitions.
+     rand_index=mi.to(dev);bbx1,bby1,bbx2,bby2=mb
+     x[:,:,bbx1:bbx2,bby1:bby2]=x[rand_index,:,bbx1:bbx2,bby1:bby2]
     m(x[:10]);m(x[10:])
   after=evaluate(m,loader,dev);rows.append({'checkpoint':str(path),'before':before,'after':after,'gain_top1':after['top1']-before['top1'],'gain_nll':after['nll']-before['nll'],'parameter_max_abs_change':max(float((v.cpu()-params[n]).abs().max()) for n,v in m.named_parameters())})
  out={'status':'complete','protocol':'paired_same_domain_bn_v1','mode':a.mode,'epochs':a.epochs,'views':a.epochs*300,'cutmix':not a.disable_cutmix,'rows':rows,'summary':{'before_top1':st(r['before']['top1'] for r in rows),'after_top1':st(r['after']['top1'] for r in rows),'gain_top1':st(r['gain_top1'] for r in rows),'gain_nll':st(r['gain_nll'] for r in rows)}};a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(out,indent=2)+'\n');print(json.dumps(out['summary'],indent=2))

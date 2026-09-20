@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 ARCHIVE=/linxi/dataset/FGDD_six_source/aircraft_ipc3_bbox_pack_v1_complete.tar.gz
 WORK=/tmp/fgdd_aircraft_six_source_experiment
 F1_WORK=/tmp/fgdd_aircraft_six_source_fir_v1
