@@ -7,7 +7,7 @@ WORK=/tmp/fgdd_aircraft_six_source_experiment
 F1_WORK=/tmp/fgdd_aircraft_six_source_fir_v1
 FKD_WORK=/tmp/fgdd_u6_bbox_bn_cross_v1/compressed_fkd
 FIT=/linxi/dataset/FGDD_six_source/fir_preemphasis_v1/audits/fit.json
-OUT=/linxi/dataset/FGDD_BN_audits/aircraft_bbox_model_f1_bn_v1
+OUT="${OUT:-/linxi/dataset/FGDD_BN_audits/aircraft_bbox_model_f1_bn_v1}"
 TEST=/linxi/dataset/FG_SRe2L_repro/v1/datasets/A_imsize224/test
 mkdir -p "$OUT"/{logs,status} "$F1_WORK" "$FKD_WORK"
 exec 9>"$OUT/launcher.lock"; flock -n 9 || exit 75
