@@ -3,6 +3,8 @@ set -euo pipefail
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PYTHON="${PYTHON:-python}"
+DEPS_ROOT="${DEPS_ROOT:-/tmp/fg_oss_bbox_deps}"
+export PYTHONPATH="$DEPS_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 GD="$ROOT/third_party/detectors/GroundingDINO"
 SAM="$ROOT/third_party/segmenters/sam2"
 MODEL_ROOT="${MODEL_ROOT:-/linxi/models/oss_bbox}"
