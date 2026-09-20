@@ -105,7 +105,7 @@ class GroundingDinoTopOne:
         sys.path.insert(0, str(source_root.resolve()))
         import groundingdino.datasets.transforms as T
         from groundingdino.models import build_model
-        from groundingdino.util.misc import clean_state_dict
+        from groundingdino.util.misc import clean_state_dict, nested_tensor_from_tensor_list
         from groundingdino.util.slconfig import SLConfig
         args = SLConfig.fromfile(str(config)); args.device = device
         if text_encoder_root is not None: args.text_encoder_type = str(text_encoder_root.resolve())
@@ -114,6 +114,7 @@ class GroundingDinoTopOne:
         missing, unexpected = self.model.load_state_dict(clean_state_dict(payload["model"]), strict=False)
         self.load_audit = {"missing": list(missing), "unexpected": list(unexpected)}
         self.model = self.model.to(device).eval(); self.device = device
+        self.nested_tensor_from_tensor_list = nested_tensor_from_tensor_list
         self.caption = caption.lower().strip()
         if not self.caption.endswith("."): self.caption += "."
         self.transform = T.Compose([T.RandomResize([800], max_size=1333), T.ToTensor(),
@@ -122,7 +123,8 @@ class GroundingDinoTopOne:
     @torch.inference_mode()
     def batch(self, images):
         transformed = [self.transform(image, None)[0].to(self.device) for image in images]
-        output = self.model(transformed, captions=[self.caption] * len(images))
+        samples = self.nested_tensor_from_tensor_list(transformed)
+        output = self.model(samples, captions=[self.caption] * len(images))
         result = []
         for position, image in enumerate(images):
             logits = output["pred_logits"][position].sigmoid()
