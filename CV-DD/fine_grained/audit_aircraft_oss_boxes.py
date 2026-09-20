@@ -101,13 +101,14 @@ def aircraft_rows(raw_images, boxes_path, variants_path):
 
 
 class GroundingDinoTopOne:
-    def __init__(self, source_root, config, checkpoint, device, caption):
+    def __init__(self, source_root, config, checkpoint, device, caption, text_encoder_root=None):
         sys.path.insert(0, str(source_root.resolve()))
         import groundingdino.datasets.transforms as T
         from groundingdino.models import build_model
         from groundingdino.util.misc import clean_state_dict
         from groundingdino.util.slconfig import SLConfig
         args = SLConfig.fromfile(str(config)); args.device = device
+        if text_encoder_root is not None: args.text_encoder_type = str(text_encoder_root.resolve())
         self.model = build_model(args)
         payload = torch.load(checkpoint, map_location="cpu", weights_only=False)
         missing, unexpected = self.model.load_state_dict(clean_state_dict(payload["model"]), strict=False)
@@ -139,6 +140,7 @@ def main():
     parser.add_argument("--grounding-root", required=True, type=Path)
     parser.add_argument("--grounding-config", required=True, type=Path)
     parser.add_argument("--grounding-checkpoint", required=True, type=Path)
+    parser.add_argument("--text-encoder-root", type=Path)
     parser.add_argument("--sam-root", required=True, type=Path)
     parser.add_argument("--sam-config", default="configs/sam2.1/sam2.1_hiera_l.yaml")
     parser.add_argument("--sam-checkpoint", required=True, type=Path)
@@ -151,7 +153,8 @@ def main():
     inputs = aircraft_rows(args.raw_images, args.boxes, args.variants)
     if args.limit is not None: inputs = inputs[:args.limit]
     dino = GroundingDinoTopOne(args.grounding_root, args.grounding_config,
-                               args.grounding_checkpoint, args.device, args.caption)
+                               args.grounding_checkpoint, args.device, args.caption,
+                               args.text_encoder_root)
     sam = None
     if not args.disable_sam:
         sys.path.insert(0, str(args.sam_root.resolve()))
@@ -211,6 +214,7 @@ def main():
         "grounding_revision": (args.grounding_root / "UPSTREAM_REVISION").read_text().strip(),
         "sam_revision": (args.sam_root / "UPSTREAM_REVISION").read_text().strip(),
         "grounding_checkpoint_sha256": sha256(args.grounding_checkpoint),
+        "text_encoder_root": None if args.text_encoder_root is None else str(args.text_encoder_root.resolve()),
         "sam_checkpoint_sha256": None if sam is None else sha256(args.sam_checkpoint),
         "grounding_load_audit": dino.load_audit, "summary": summary,
         "predictions": str(output_jsonl.resolve()),

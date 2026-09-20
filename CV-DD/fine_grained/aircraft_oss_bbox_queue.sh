@@ -12,6 +12,7 @@ OUT="${OUT:-/linxi/dataset/FGDD_bbox_models/aircraft_oss_v1}"
 RAW=/linxi/dataset/FD2/raw/fgvc-aircraft-2013b/data
 GD_CKPT="$MODEL_ROOT/groundingdino_swint_ogc.pth"
 SAM_CKPT="$MODEL_ROOT/sam2.1_hiera_large.pt"
+BERT="$MODEL_ROOT/bert-base-uncased"
 mkdir -p "$OUT"/{logs,status} "$MODEL_ROOT"
 exec 9>"$OUT/launcher.lock"; flock -n 9 || exit 75
 rm -f "$OUT/status/complete" "$OUT/status/failed"; date --iso-8601=seconds > "$OUT/status/running"
@@ -27,7 +28,7 @@ trap 's=$?; rm -f "$OUT/status/running"; if ((s)); then echo "$(date --iso-8601=
 "$PYTHON" -u "$ROOT/CV-DD/fine_grained/audit_aircraft_oss_boxes.py" \
   --raw-images "$RAW/images" --boxes "$RAW/images_box.txt" --variants "$RAW/images_variant_trainval.txt" \
   --grounding-root "$GD" --grounding-config "$GD/groundingdino/config/GroundingDINO_SwinT_OGC.py" \
-  --grounding-checkpoint "$GD_CKPT" --sam-root "$SAM" \
+  --grounding-checkpoint "$GD_CKPT" --text-encoder-root "$BERT" --sam-root "$SAM" \
   --sam-config configs/sam2.1/sam2.1_hiera_l.yaml --sam-checkpoint "$SAM_CKPT" \
   --caption 'airplane.' --device cuda --output-root "$OUT" > "$OUT/logs/audit.log" 2>&1
 rm -f "$OUT/status/running"; date --iso-8601=seconds > "$OUT/status/complete"

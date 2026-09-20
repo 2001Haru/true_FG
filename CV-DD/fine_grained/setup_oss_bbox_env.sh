@@ -3,7 +3,7 @@ set -euo pipefail
 ENV_ROOT="${ENV_ROOT:-/tmp/fg_oss_bbox_deps}"
 mkdir -p "$ENV_ROOT"
 python -m pip install --disable-pip-version-check --target "$ENV_ROOT" \
-  'hydra-core>=1.3.2' 'iopath>=0.1.10' addict yapf pycocotools
+  'hydra-core>=1.3.2' 'iopath>=0.1.10' addict yapf
 PYTHONPATH="$ENV_ROOT${PYTHONPATH:+:$PYTHONPATH}" PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python python - <<'PY'
 import torch,torchvision,transformers,timm,hydra,iopath,addict,yapf
 print({'torch':torch.__version__,'torchvision':torchvision.__version__,
