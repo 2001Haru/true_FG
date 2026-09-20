@@ -120,16 +120,21 @@ class GroundingDinoTopOne:
                                     T.Normalize([.485, .456, .406], [.229, .224, .225])])
 
     @torch.inference_mode()
-    def __call__(self, image):
-        transformed, _ = self.transform(image, None)
-        output = self.model(transformed[None].to(self.device), captions=[self.caption])
-        logits = output["pred_logits"].sigmoid()[0]
-        scores = logits.max(1).values; index = int(scores.argmax())
-        cx, cy, width, height = output["pred_boxes"][0, index].float().cpu().tolist()
-        iw, ih = image.size
-        box = [(cx - width / 2) * iw, (cy - height / 2) * ih,
-               (cx + width / 2) * iw, (cy + height / 2) * ih]
-        return clip_box(box, iw, ih), float(scores[index]), index
+    def batch(self, images):
+        transformed = [self.transform(image, None)[0].to(self.device) for image in images]
+        output = self.model(transformed, captions=[self.caption] * len(images))
+        result = []
+        for position, image in enumerate(images):
+            logits = output["pred_logits"][position].sigmoid()
+            scores = logits.max(1).values; index = int(scores.argmax())
+            cx, cy, width, height = output["pred_boxes"][position, index].float().cpu().tolist()
+            iw, ih = image.size
+            box = [(cx - width / 2) * iw, (cy - height / 2) * ih,
+                   (cx + width / 2) * iw, (cy + height / 2) * ih]
+            result.append((clip_box(box, iw, ih), float(scores[index]), index))
+        return result
+
+    def __call__(self, image): return self.batch([image])[0]
 
 
 def main():
@@ -148,6 +153,7 @@ def main():
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--output-root", required=True, type=Path)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--disable-sam", action="store_true")
     args = parser.parse_args(); args.output_root.mkdir(parents=True, exist_ok=True)
     inputs = aircraft_rows(args.raw_images, args.boxes, args.variants)
@@ -167,36 +173,45 @@ def main():
     if output_jsonl.is_file():
         for line in output_jsonl.read_text().splitlines():
             row = json.loads(line); existing[row["identity"]] = row
+    pending = [item for item in inputs if item["identity"] not in existing]
     with output_jsonl.open("a", buffering=1) as writer:
-        for number, item in enumerate(inputs, 1):
-            if item["identity"] in existing: continue
-            with Image.open(item["path"]) as handle: image = handle.convert("RGB")
-            dino_box, dino_score, query_index = dino(image)
-            dino_result = {"box_xyxy": dino_box, "score": dino_score,
-                           "query_index": query_index,
-                           "metrics": box_metrics(dino_box, item["official_box_xyxy"], item["width"], item["height"])}
-            sam_result = {"box_xyxy": None, "predicted_iou": None,
-                          "mask_area_fraction": None,
-                          "metrics": {key: 0.0 for key in dino_result["metrics"]}}
+        for start in range(0, len(pending), args.batch_size):
+            chunk = pending[start:start + args.batch_size]; images = []
+            for item in chunk:
+                with Image.open(item["path"]) as handle: images.append(handle.convert("RGB"))
+            detections = dino.batch(images)
+            sam_outputs = [None] * len(chunk)
             if sam is not None:
-                image_array = np.array(image, copy=True)
+                arrays = [np.array(image, copy=True) for image in images]
+                boxes = [np.asarray(box, dtype=np.float32) for box, _, _ in detections]
                 with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16,
                                                              enabled=args.device.startswith("cuda")):
-                    sam.set_image(image_array)
-                    masks, scores, _ = sam.predict(box=np.asarray(dino_box, dtype=np.float32),
-                                                   multimask_output=False)
-                selected = int(np.argmax(scores)); box = mask_box(masks[selected])
-                if box is not None:
-                    sam_result = {"box_xyxy": clip_box(box, item["width"], item["height"]),
-                                  "predicted_iou": float(scores[selected]),
-                                  "mask_area_fraction": float(np.mean(masks[selected])),
-                                  "metrics": box_metrics(box, item["official_box_xyxy"], item["width"], item["height"])}
-            row = {"identity": item["identity"], "variant": item["variant"],
-                   "raw_size": [item["width"], item["height"]],
-                   "official_box_xyxy": item["official_box_xyxy"],
-                   "grounding_dino": dino_result, "grounding_dino_sam21": sam_result}
-            writer.write(json.dumps(row) + "\n"); existing[item["identity"]] = row
-            if number % 100 == 0: print(f"processed {number}/{len(inputs)}", flush=True)
+                    sam.set_image_batch(arrays)
+                    masks_batch, scores_batch, _ = sam.predict_batch(
+                        box_batch=boxes, multimask_output=False)
+                sam_outputs = list(zip(masks_batch, scores_batch))
+            for item, detection, sam_output in zip(chunk, detections, sam_outputs):
+                dino_box, dino_score, query_index = detection
+                dino_result = {"box_xyxy": dino_box, "score": dino_score,
+                               "query_index": query_index,
+                               "metrics": box_metrics(dino_box, item["official_box_xyxy"], item["width"], item["height"])}
+                sam_result = {"box_xyxy": None, "predicted_iou": None,
+                              "mask_area_fraction": None,
+                              "metrics": {key: 0.0 for key in dino_result["metrics"]}}
+                if sam_output is not None:
+                    masks, scores = sam_output; selected = int(np.argmax(scores)); box = mask_box(masks[selected])
+                    if box is not None:
+                        sam_result = {"box_xyxy": clip_box(box, item["width"], item["height"]),
+                                      "predicted_iou": float(scores[selected]),
+                                      "mask_area_fraction": float(np.mean(masks[selected])),
+                                      "metrics": box_metrics(box, item["official_box_xyxy"], item["width"], item["height"])}
+                row = {"identity": item["identity"], "variant": item["variant"],
+                       "raw_size": [item["width"], item["height"]],
+                       "official_box_xyxy": item["official_box_xyxy"],
+                       "grounding_dino": dino_result, "grounding_dino_sam21": sam_result}
+                writer.write(json.dumps(row) + "\n"); existing[item["identity"]] = row
+            completed = min(start + len(chunk), len(pending))
+            if completed % 100 < args.batch_size: print(f"processed {completed}/{len(pending)}", flush=True)
     rows = [existing[item["identity"]] for item in inputs]
     methods = ["grounding_dino"] + ([] if sam is None else ["grounding_dino_sam21"])
     summary = {method: summarize(rows, method) for method in methods}
@@ -208,6 +223,7 @@ def main():
     manifest = {
         "status": "complete", "protocol": "aircraft_oss_bbox_audit_v1",
         "images": len(rows), "split": str(args.variants), "caption": dino.caption,
+        "batch_size": args.batch_size,
         "selection": "highest score among all 900 Grounding DINO queries; no confidence threshold or official-box tuning",
         "sam": "SAM2.1 Hiera-L; DINO box prompt; multimask_output=False; thresholded mask tight XYXY box",
         "official_boxes": "inclusive one-indexed Aircraft boxes converted to continuous zero-indexed [x1-1,y1-1,x2,y2]",
