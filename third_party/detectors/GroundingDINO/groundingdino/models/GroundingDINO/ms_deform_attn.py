@@ -27,8 +27,10 @@ from torch.nn.init import constant_, xavier_uniform_
 
 try:
     from groundingdino import _C
+    _HAS_CUSTOM_OPS = True
 except:
-    warnings.warn("Failed to load custom C++ ops. Running on CPU mode Only!")
+    _HAS_CUSTOM_OPS = False
+    warnings.warn("Failed to load custom C++ ops; using the official pure-PyTorch deformable-attention fallback.")
 
 
 # helpers
@@ -327,7 +329,7 @@ class MultiScaleDeformableAttention(nn.Module):
                 )
             )
     
-        if torch.cuda.is_available() and value.is_cuda:
+        if torch.cuda.is_available() and value.is_cuda and _HAS_CUSTOM_OPS:
             halffloat = False
             if value.dtype == torch.float16:
                 halffloat = True
