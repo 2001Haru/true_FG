@@ -25,10 +25,19 @@ trap 's=$?; rm -f "$OUT/status/running"; if ((s)); then echo "$(date --iso-8601=
   https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt
 [[ -f "$SAM_CKPT" ]] || mv "$SAM_CKPT.tmp" "$SAM_CKPT"
 
-"$PYTHON" -u "$ROOT/CV-DD/fine_grained/audit_aircraft_oss_boxes.py" \
-  --raw-images "$RAW/images" --boxes "$RAW/images_box.txt" --variants "$RAW/images_variant_trainval.txt" \
-  --grounding-root "$GD" --grounding-config "$GD/groundingdino/config/GroundingDINO_SwinT_OGC.py" \
-  --grounding-checkpoint "$GD_CKPT" --text-encoder-root "$BERT" --sam-root "$SAM" \
-  --sam-config configs/sam2.1/sam2.1_hiera_l.yaml --sam-checkpoint "$SAM_CKPT" \
-  --caption 'airplane.' --device cuda --output-root "$OUT" > "$OUT/logs/audit.log" 2>&1
+pids=()
+for shard in 0 1; do
+  mkdir -p "$OUT/shard$shard"
+  CUDA_VISIBLE_DEVICES=$shard "$PYTHON" -u "$ROOT/CV-DD/fine_grained/audit_aircraft_oss_boxes.py" \
+    --raw-images "$RAW/images" --boxes "$RAW/images_box.txt" --variants "$RAW/images_variant_trainval.txt" \
+    --grounding-root "$GD" --grounding-config "$GD/groundingdino/config/GroundingDINO_SwinT_OGC.py" \
+    --grounding-checkpoint "$GD_CKPT" --text-encoder-root "$BERT" --sam-root "$SAM" \
+    --sam-config configs/sam2.1/sam2.1_hiera_l.yaml --sam-checkpoint "$SAM_CKPT" \
+    --caption 'airplane.' --device cuda --batch-size 4 --num-shards 2 --shard-index "$shard" \
+    --output-root "$OUT/shard$shard" > "$OUT/logs/audit_shard$shard.log" 2>&1 & pids+=("$!")
+done
+failed=0; for pid in "${pids[@]}"; do wait "$pid" || failed=1; done; ((failed==0))
+"$PYTHON" "$ROOT/CV-DD/fine_grained/summarize_aircraft_oss_boxes.py" \
+  --shard "$OUT/shard0" --shard "$OUT/shard1" --expected-images 6667 --output "$OUT/summary.json" \
+  > "$OUT/logs/summary.log" 2>&1
 rm -f "$OUT/status/running"; date --iso-8601=seconds > "$OUT/status/complete"

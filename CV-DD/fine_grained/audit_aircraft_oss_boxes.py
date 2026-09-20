@@ -156,10 +156,15 @@ def main():
     parser.add_argument("--output-root", required=True, type=Path)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--num-shards", type=int, default=1)
+    parser.add_argument("--shard-index", type=int, default=0)
     parser.add_argument("--disable-sam", action="store_true")
     args = parser.parse_args(); args.output_root.mkdir(parents=True, exist_ok=True)
     inputs = aircraft_rows(args.raw_images, args.boxes, args.variants)
     if args.limit is not None: inputs = inputs[:args.limit]
+    if args.num_shards <= 0 or args.shard_index not in range(args.num_shards):
+        raise ValueError((args.num_shards, args.shard_index))
+    inputs = inputs[args.shard_index::args.num_shards]
     dino = GroundingDinoTopOne(args.grounding_root, args.grounding_config,
                                args.grounding_checkpoint, args.device, args.caption,
                                args.text_encoder_root)
@@ -226,6 +231,7 @@ def main():
         "status": "complete", "protocol": "aircraft_oss_bbox_audit_v1",
         "images": len(rows), "split": str(args.variants), "caption": dino.caption,
         "batch_size": args.batch_size,
+        "shard": {"index": args.shard_index, "count": args.num_shards},
         "selection": "highest score among all 900 Grounding DINO queries; no confidence threshold or official-box tuning",
         "sam": "SAM2.1 Hiera-L; DINO box prompt; multimask_output=False; thresholded mask tight XYXY box",
         "official_boxes": "inclusive one-indexed Aircraft boxes converted to continuous zero-indexed [x1-1,y1-1,x2,y2]",
