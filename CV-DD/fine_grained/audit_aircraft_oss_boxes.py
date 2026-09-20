@@ -58,7 +58,7 @@ def mask_box(mask):
 
 
 def distribution(values):
-    values = np.asarray(values, dtype=np.float64)
+    values = np.asarray(list(values), dtype=np.float64)
     return {"mean": float(values.mean()), "sample_sd": float(values.std(ddof=1)),
             "min": float(values.min()), "p10": float(np.quantile(values, .1)),
             "median": float(np.median(values)), "p90": float(np.quantile(values, .9)),
@@ -179,7 +179,7 @@ def main():
                           "mask_area_fraction": None,
                           "metrics": {key: 0.0 for key in dino_result["metrics"]}}
             if sam is not None:
-                image_array = np.asarray(image)
+                image_array = np.array(image, copy=True)
                 with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16,
                                                              enabled=args.device.startswith("cuda")):
                     sam.set_image(image_array)
