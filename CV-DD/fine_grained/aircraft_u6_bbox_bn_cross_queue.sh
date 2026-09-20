@@ -8,6 +8,7 @@ FKD_WORK=/tmp/fgdd_u6_bbox_bn_cross_v1/compressed_fkd
 OUT=/linxi/dataset/FGDD_BN_audits/aircraft_u6_bbox_cross_bn_v1
 TEST=/linxi/dataset/FG_SRe2L_repro/v1/datasets/A_imsize224/test
 mkdir -p "$OUT"/{logs,status} "$FKD_WORK"
+exec 9>"$OUT/launcher.lock"; flock -n 9 || exit 75
 rm -f "$OUT/status/complete" "$OUT/status/failed"
 date --iso-8601=seconds > "$OUT/status/running"
 trap 's=$?; rm -f "$OUT/status/running"; if ((s)); then echo "$(date --iso-8601=seconds) exit=$s" > "$OUT/status/failed"; fi' EXIT
